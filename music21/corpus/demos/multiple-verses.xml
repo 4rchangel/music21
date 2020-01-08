@@ -30,41 +30,168 @@
 					<line>2</line>
 				</clef>
 			</attributes>
-			<note>
-				<pitch>
-					<step>A</step>
-					<octave>4</octave>
-				</pitch>
-				<duration>4</duration>
-				<voice>1</voice>
-				<type>whole</type>
-				<stem default-y="9.51">up</stem>
-				<lyric number="1" justify="right" default-y="-64.10">
-					<syllabic>single</syllabic>
-					<text font-family="CenturySchL" font-size="11" font-weight="normal"
-						font-style="normal" xml:lang="de">1. First</text>
-				</lyric>
-				<lyric number="2" justify="right" default-y="-92.11">
-					<syllabic>single</syllabic>
-					<text font-family="CenturySchL" font-size="11" font-weight="normal"
-						font-style="normal" xml:lang="de">2. Second</text>
-				</lyric>
-				<lyric number="3" justify="right" default-y="-120.12">
-					<syllabic>single</syllabic>
-					<text font-family="CenturySchL" font-size="11" font-weight="normal"
-						font-style="normal" xml:lang="de">3. Third</text>
-				</lyric>
-				<lyric number="4" justify="right" default-y="-148.13">
-					<syllabic>single</syllabic>
-					<text font-family="CenturySchL" font-size="11" font-weight="normal"
-						font-style="normal" xml:lang="de">4. Fourth</text>
-				</lyric>
-				<lyric number="5" justify="right" default-y="-176.13">
-					<syllabic>single</syllabic>
-					<text font-family="CenturySchL" font-size="11" font-weight="normal"
-						font-style="normal" xml:lang="de">5. Fifth</text>
-				</lyric>
-			</note>
-		</measure>
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>4</duration>
+			<voice>1</voice>
+			<type>whole</type>
+			<stem default-y="9.51">up</stem>
+			<lyric number="1" justify="right" default-y="-64.10">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">1. First</text>
+			</lyric>
+			<lyric number="2" justify="right" default-y="-92.11">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">2. Second</text>
+			</lyric>
+			<lyric number="3" justify="right" default-y="-120.12">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">3. Third</text>
+			</lyric>
+			<lyric number="4" justify="right" default-y="-148.13">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">4. Fourth</text>
+			</lyric>
+			<lyric number="5" justify="right" default-y="-176.13">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">5. Fifth</text>
+			</lyric>
+		</note>
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>4</duration>
+			<voice>1</voice>
+			<type>whole</type>
+			<stem default-y="9.51">up</stem>
+			<lyric number="1" justify="right" default-y="-64.10">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">full</text>
+			</lyric>
+			<lyric number="2" justify="right" default-y="-92.11">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">full</text>
+			</lyric>
+			<lyric number="4" justify="right" default-y="-148.13">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">full</text>
+			</lyric>
+			<lyric number="5" justify="right" default-y="-176.13">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">full</text>
+			</lyric>
+		</note>
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>4</duration>
+			<voice>1</voice>
+			<type>whole</type>
+			<stem default-y="9.51">up</stem>
+			<lyric number="4" justify="right" default-y="-148.13">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">line appears early in xml</text>
+			</lyric>
+			<lyric number="1" justify="right" default-y="-64.10">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">line</text>
+			</lyric>
+			<lyric number="2" justify="right" default-y="-92.11">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">line</text>
+			</lyric>
+			<lyric number="3" justify="right" default-y="-120.12">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">line</text>
+			</lyric>
+			<lyric number="5" justify="right" default-y="-176.13">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">line</text>
+			</lyric>
+		</note>
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>4</duration>
+			<voice>1</voice>
+			<type>whole</type>
+			<stem default-y="9.51">up</stem>
+			<lyric number="1" justify="right" default-y="-64.10">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">is boring plaintext</text>
+			</lyric>
+			<lyric number="2" justify="right" default-y="-92.11">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">contains </text>
+				<!-- lack of an elision between subsequent text elements is allowed in MusicXML 2.0 but not in MusicXML 2.0 XSD -->
+				<text font-family="CenturySchL" font-size="11" font-weight="bold"
+					font-style="normal" xml:lang="de">formatted </text>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">text</text>
+			</lyric>
+			<lyric number="3" justify="right" default-y="-120.12">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">skipped a note</text>
+			</lyric>
+			<lyric number="4" justify="right" default-y="-148.13">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">and</text>
+				<elision font-family="EngraverFontSet,engraved"></elision><!--unicode character &#ee9591; generated by popular music-sheet software-->
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">uses</text>
+				<elision font-family="EngraverFontSet,engraved"></elision><!--unicode character &#ee9591; generated by popular music-sheet software-->
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">elisions</text>
+			</lyric>
+			<lyric number="5" justify="right" default-y="-176.13">
+				<syllabic>begin</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">us</text>
+				<elision font-family="EngraverFontSet,engraved">-</elision>
+				<syllabic>end</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">es</text>
+				<elision font-family="EngraverFontSet,engraved"></elision><!--unicode character &#ee9591; generated by popular music-sheet software-->
+				<syllabic>begin</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">syl</text>
+				<elision font-family="EngraverFontSet,engraved"></elision>
+				<syllabic>middle</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">la</text>
+				<elision font-family="EngraverFontSet,engraved"></elision>
+				<syllabic>end</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">bics</text>
+			</lyric>
+		</note>
+	</measure>
 	</part>
 </score-partwise>
