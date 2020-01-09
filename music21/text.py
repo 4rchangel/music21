@@ -78,8 +78,8 @@ def assembleLyrics(streamIn, lineNumber=1):
     # need to find maximum number of lyrics on each note
     for n in noteStream:
         try:
-            lyricObj = n.lyrics[lineNumber - 1]  # a list of lyric objs
-        except IndexError:
+            lyricObj = next(filter(lambda l: l.number == lineNumber, n.lyrics))  # a list of lyric objs
+        except (IndexError, StopIteration):
             continue
         # environLocal.printDebug(['lyricObj', 'lyricObj.text', lyricObj.text,
         #    'lyricObj.syllabic', lyricObj.syllabic, 'word', word])
