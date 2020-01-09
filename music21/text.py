@@ -622,6 +622,19 @@ class Test(unittest.TestCase):
         self.assertEqual(post, 'aristocats are great')
 
 
+    def testAssembleAllLyrics(self):
+        from music21 import converter, corpus
+        a = corpus.parse('demos/multiple-verses.xml')
+        verses = assembleAllLyrics(a, lyricSeparation='|').split('|')
+
+        self.assertEqual(verses[0], '')
+        self.assertEqual(verses[1], "1. First full line is boring plaintext")
+        self.assertEqual(verses[2], "2. Second full line contains formatted text")
+        self.assertEqual(verses[3], "3. Third line skipped a note")
+        self.assertEqual(verses[4], "4. Fourth full line appears early in xml and uses elisions")
+        self.assertEqual(verses[5], "5. Fifth full line uses syllabics")
+
+
     def testLanguageDetector(self):
         ld = LanguageDetector()
         diffFrIt = ld.trigrams['fr'] - ld.trigrams['it']
