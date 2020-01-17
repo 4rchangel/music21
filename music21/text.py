@@ -74,30 +74,20 @@ def assembleLyrics(streamIn, lineNumber=1):
     '''
     word = []
     words = []
+    textAccu = ''
     noteStream = streamIn.flat.notesAndRests
-    # need to find maximum number of lyrics on each note
     for n in noteStream:
         try:
-            lyricObj = next(filter(lambda l: l.number == lineNumber, n.lyrics))  # a list of lyric objs
+            # find the appropriate lyric object, according to the line number
+            lyricObj = next(filter(lambda l: l.number == lineNumber, n.lyrics))
+            # Note: composeText adds leading spaces at word boundaries, allowing concatenation of the sequence
+            textAccu += lyricObj.composeText(sylStart='', wordStart=' ', elisions=False)
         except (IndexError, StopIteration):
+            # if a Note does not contain a Lyric object with the desired line number, there is nothing to append
             continue
-        # environLocal.printDebug(['lyricObj', 'lyricObj.text', lyricObj.text,
-        #    'lyricObj.syllabic', lyricObj.syllabic, 'word', word])
 
-        # need to match case of non-defined syllabic attribute
-        if lyricObj.text != '_':  # continuation syllable in many pieces
-            if lyricObj.syllabic in ('begin', 'middle'):
-                if lyricObj.text is not None:  # should not be possible but sometimes happens
-                    word.append(lyricObj.text)
-            elif lyricObj.syllabic in ('end', 'single', None):
-                if lyricObj.text is not None:  # should not be possible but sometimes happens
-                    word.append(lyricObj.text)
-                # environLocal.printDebug(['word pre-join', word])
-                words.append(''.join(word))
-                word = []
-            else:
-                raise Exception('no known Text syllabic setting: %s' % lyricObj.syllabic)
-    return ' '.join(words)
+    #return ' '.join(words)
+    return textAccu.strip()
 
 
 def assembleAllLyrics(streamIn, maxLyrics=10, lyricSeparation='\n'):

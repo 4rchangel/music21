@@ -4022,7 +4022,7 @@ class MeasureParser(XMLParserBase):
             n.lyrics.append(lyricObj)
             currentLyricNumber += 1
 
-    def xmlToLyric(self, mxLyric, inputM21=None):
+    def xmlToLyric(self, mxLyric : ET.Element, inputM21=None):
         '''
         Translate a MusicXML <lyric> tag to a
         music21 :class:`~music21.note.Lyric` object or return None if no Lyric object
@@ -4058,17 +4058,50 @@ class MeasureParser(XMLParserBase):
         else:
             ly = inputM21
 
+        # sequentially parse the child elements which constitute the text group them into semantic contexts
+        ctxt = note.Textual.Context()
+        for mxChild in mxLyric:
+            if mxChild.tag == 'syllabic':
+                # new syllable started: create a new context for parsing the next textual
+                if textStripValid(mxChild):
+                    ctxt.syllabic = mxChild.text.strip()
+                else:
+                    ctxt.syllabic = None # TODO: log warning
+            elif mxChild.tag == 'elision':
+                # starts a new context
+                ctxt = note.Textual.Context()
+                if textStripValid(mxChild):
+                    elTxt = mxChild.text.strip()
+                else:
+                    elTxt = '_' # TODO: log warning
+                elision = note.Textual(elTxt, ctxt)  # Note: circular reference
+                # parse style
+                self.setFont(mxChild, elision)
+                self.setColor(mxChild, elision)
+                self.setTextFormatting(mxChild, elision)
+                # append to context
+                ctxt.elision = elision
+            elif mxChild.tag == 'text':
+                if textStripValid(mxChild):
+                    rawText = mxChild.text # .strip() could be applied, if we are strict, expecting proper syllabics
+                    # If not, m21 may be able to tolerate some more malformed musicxml, i.e. be able to reproduce it.
+                    # at the same time, .strip() should not be necessary in a well-formed xml anyways. => Be relaxed
+                else:
+                    # sometimes there are empty lyrics.
+                    # still a textual element shall be created in order to capture the structure (and potential context)
+                    # because the context (like elisions) may be existing in conjunction with a textual element
+                    rawText = None
+                t = note.Textual(rawText, ctxt)
+                # parse style attributes
+                self.setFont(mxChild, t)
+                self.setColor(mxChild, t)
+                self.setTextFormatting(mxChild, t)
+                # append
+                ly.textuals.append(t)
+
         # TODO: id when lyrics get ids...
-
-        try:
-            ly.text = mxLyric.find('text').text.strip()
-        except AttributeError:
-            return None  # sometimes there are empty lyrics
-
-        # This is new to account for identifiers
-
+        # set lyric number and account for identifiers
         number = mxLyric.get('number')
-
         try:
             number = int(number)
             ly.number = number
@@ -4084,11 +4117,7 @@ class MeasureParser(XMLParserBase):
         if identifier is not None:
             ly.identifier = identifier
 
-        # Used to be l.number = mxLyric.get('number')
-        mxSyllabic = mxLyric.find('syllabic')
-        if textStripValid(mxSyllabic):
-            ly.syllabic = mxSyllabic.text.strip()
-
+        # parse style attributes
         self.setStyleAttributes(mxLyric, ly,
                                 ('justify', 'placement', 'print-object'),
                                 ('justify', 'placement', 'hideObjectOnPrint'))
