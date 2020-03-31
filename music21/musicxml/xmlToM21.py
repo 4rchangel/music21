@@ -4059,6 +4059,7 @@ class MeasureParser(XMLParserBase):
             ly = inputM21
 
         # sequentially parse the child elements which constitute the text group them into semantic contexts
+        lyrText = None
         ctxt = note.Textual.Context()
         for mxChild in mxLyric:
             if mxChild.tag == 'syllabic':
@@ -4076,9 +4077,7 @@ class MeasureParser(XMLParserBase):
                     elTxt = '_' # TODO: log warning
                 elision = note.Textual(elTxt, ctxt)  # Note: circular reference
                 # parse style
-                self.setFont(mxChild, elision)
-                self.setColor(mxChild, elision)
-                self.setTextFormatting(mxChild, elision)
+                self.setPrintStyle(mxChild, elision)
                 # append to context
                 ctxt.elision = elision
             elif mxChild.tag == 'text':
@@ -4093,11 +4092,31 @@ class MeasureParser(XMLParserBase):
                     rawText = None
                 t = note.Textual(rawText, ctxt)
                 # parse style attributes
-                self.setFont(mxChild, t)
-                self.setColor(mxChild, t)
-                self.setTextFormatting(mxChild, t)
+                self.setPrintStyle(mxChild, t)
                 # append
-                ly.textuals.append(t)
+                if not lyrText:
+                    lyrText = note.LyricText()
+                lyrText.textuals.append(t)
+            elif mxChild.tag == 'extend':
+                extension = note.LyricExtension(note.LyricExtension.ExtensionType(str(mxChild.get('type'))))
+                # TODO: only allowed extension typ here is 'stop'. Maybe force or check and log/raise?
+                self.setPrintStyle(mxChild, extension)
+                if lyrText:
+                    lyrText.extension = extension
+                elif not ly.content:
+                    ly.content = extension
+                else:
+                    raise RuntimeError('Malformed musixml! Multiple contents for lyric element.')
+            elif mxChild.tag in ['humming', 'laughing']:
+                if not ly.content:
+                    ly.content = note.LyricAbstraction(mxChild.tag)
+                else:
+                    raise RuntimeError('Malformed musixml! Multiple contents for lyric element.')
+        if lyrText:
+            if not ly.content:
+                ly.content = lyrText
+            else:
+                raise RuntimeError('Malformed musixml! Multiple contents for lyric element.')
 
         # TODO: id when lyrics get ids...
         # set lyric number and account for identifiers

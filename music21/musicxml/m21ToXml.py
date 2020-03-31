@@ -5193,8 +5193,23 @@ class MeasureExporter(XMLExporterBase):
 
     # -----------------------------
     # note helpers...
+    def extensionToXml(self, ext : note.LyricExtension):
+        mxExt = Element('extension')
+        self.setPrintStyle(mxExt, ext)
+        extType = ext.extension_type
+        if extType:
+            if extType == note.LyricExtension.ExtensionType.begin:
+                strVal = 'start'
+            elif extType == note.LyricExtension.ExtensionType.middle:
+                strVal = 'continue'
+            elif extType == note.LyricExtension.ExtensionType.end:
+                strVal = 'stop'
+            else:
+                raise RuntimeWarning('Encountered unhandled type of lyric extension')
+            mxExt.set('type', strVal)
+        return mxExt
 
-    def lyricToXml(self, l):
+    def lyricToXml(self, l : note.Lyric):
         '''
         Translate a music21 :class:`~music21.note.Lyric` object
         to a <lyric> tag.
@@ -5202,20 +5217,44 @@ class MeasureExporter(XMLExporterBase):
         Lyrics have attribute list %justify, %position, %placement, %color, %print-object
         '''
         mxLyric = Element('lyric')
-        _setTagTextFromAttribute(l, mxLyric, 'syllabic')
-        _setTagTextFromAttribute(l, mxLyric, 'text', forceEmpty=True)
-        # TODO: elision
-        # TODO: more syllabic
-        # TODO: more text
-        # TODO: extend
-        # TODO: laughing
-        # TODO: humming
+
+        if type(l.content) is note.LyricText:
+            ctxt=None
+            for tx in l.content.textuals:
+                if not tx.context is ctxt:
+                    # context change! Treat elisions and syllabic
+                    if tx.context.elision:
+                        mxEl = Element('elision')
+                        mxEl.text = '' if not tx.context.elision.rawText else tx.context.elision.rawText
+                        self.setFont(mxEl, tx.context.elision)
+                        self.setTextFormatting(mxEl, tx.context.elision)
+                        mxLyric.append(mxEl)
+                    # add syllabic, if given
+                    _setTagTextFromAttribute(tx.context, mxLyric, 'syllabic')
+                    # update current context
+                    ctxt = tx.context
+                # append text element
+                mxTxt = Element('text')
+                mxTxt.text = tx.rawText
+                self.setPrintStyle(mxTxt, tx)
+
+                mxLyric.append(mxTxt)
+            if l.content.extension:
+                mxLyric.append(self.extensionToXml(l.content.extension))
+        elif type(l.content) is note.LyricExtension:
+            mxLyric.append(self.extensionToXml(l.content))
+        elif type(l.content) is note.LyricAbstraction:
+            if l.content == LyricAbstraction.humming:
+                mxElem = Element('humming')
+            elif l.content == LyricAbstraction.laughing:
+                mxElem = Element('laughing')
+        elif l.content is not None:
+            raise NotImplementedError()
         # TODO: end-line
         # TODO: end-paragraph
         # TODO: editorial
         if l.identifier is not None:
             mxLyric.set('name', str(l.identifier))
-
         if l.number is not None:
             mxLyric.set('number', str(l.number))
         elif l.identifier is not None:

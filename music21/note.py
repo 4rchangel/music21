@@ -19,6 +19,7 @@ and used to configure, :class:`~music21.note.Note` objects.
 import copy
 import unittest
 import re
+import enum
 
 from typing import Optional, List
 
@@ -92,8 +93,36 @@ class NotRestException(exceptions21.Music21Exception):
     pass
 
 # ------------------------------------------------------------------------------
+class LyricAbstraction(enum.Enum):
+    humming = 'humming'
+    laughing = 'laughing'
 
-class Textual(style.StyleMixin, prebase.ProtoM21Object):
+class LyricExtension(prebase.ProtoM21Object, style.StyleMixin):
+
+    _styleClass = style.TextStylePlacement
+
+    __slots__ = (
+        '_extension_type',
+    )
+
+    class ExtensionType(enum.Enum):
+        begin = 'start'
+        middle = 'continue'
+        end = 'stop'
+
+    '''
+    Representation of lyric extensions across several notes
+    '''
+    def __init__(self, extType : ExtensionType = None):
+        super().__init__()
+        self._extension_type = extType
+
+    @property
+    def extension_type(self):#
+        return self._extension_type
+
+
+class Textual(prebase.ProtoM21Object, style.StyleMixin):
     '''
     An object representing an atomic textual element of lyrics
 
@@ -199,6 +228,181 @@ class Textual(style.StyleMixin, prebase.ProtoM21Object):
             t = str(t)
         self._text = t
 
+class LyricText:
+    __slots__ = (
+        '_textuals',
+        '_extension'
+    )
+
+    def __init__(self, text=None, **kwargs):
+        super().__init__()
+        self._textuals = []
+        self._extension = kwargs.get('extension', None)
+        if text:
+            self.setTextAndSyllabic(text, **kwargs)
+
+    @property
+    def extension(self):
+        return self._extension
+
+    @extension.setter
+    def extension(self, value):
+        self._extension = value
+
+    @property
+    def textuals(self) -> List[Textual]:
+        return self._textuals
+
+    @property
+    def syllabic(self) -> str:
+        '''
+        retrieve the syllabic type of the lyrics, for backwards compatibility
+        for complex lyrics composed of several syllables, this will raise an exception,
+        # TODO: humming, laughing, extend?
+        :return: one of [None, 'single', 'begin', 'middle', 'end']
+        '''
+        if self._content and type(self._content) is LyricText:
+            if not self._textuals or 0 == len(self._textuals):
+                return None
+            # a single context instance spanning over all _textuals indicates a unique syllabic type
+            if self._textuals[0].context is self._textuals[-1].context:
+                uniqueCtxt = self._textuals[0].context
+                if not uniqueCtxt:
+                    return None
+                else:
+                    return uniqueCtxt.syllabic
+            raise RuntimeError('Lyric object contains complex syllabic substructure instead of unique syllabic type')
+
+    def setTextAndSyllabic(self, rawText, **kwargs):
+        '''
+        splits a rawText into Textual elements with according syllabic type (as necessary)
+        or creates a single Textual (applyRaw==True) [with a optionally specified syllabic type]
+
+        >>> l = note.Lyric()
+        >>> l.setTextAndSyllabic('hel-lo_world')
+        >>> l.text
+
+        :type rawText: str
+        :type applyRaw: bool
+        :rtype: None
+        '''
+        # do not want to do this unless we are sure this is not a string
+        # possibly might alter unicode or other string-like representations
+        if not isinstance(rawText, str):
+            rawText = str(rawText)
+
+        syllabic = kwargs.get('syllabic', None)
+        applyRaw = kwargs.get('applyRaw', (True if syllabic else False))
+
+        if applyRaw is True:
+            ctxt = Textual.Context()
+            ctxt.syllabic = syllabic
+            self.textuals = [Textual(rawText, ctxt, applyRaw=True)]
+        else:
+            if syllabic:
+                raise ValueError('Can not enforce a desired syllabic type while parsing the text (applyRaw==False)')
+            # prepare a new context for first syllable
+            ctxt = Textual.Context()
+            ctxt.syllabic = 'single'
+            # split into words according to hyphenation. Separators appear in the word list
+            words = re.split(r'(\s+|_)', rawText.strip())
+            for word in words:
+                isSeparator = re.match(r'(?:\s+|_)', word)
+                if ctxt and isSeparator:
+                    # new word, new context
+                    ctxt = Textual.Context()
+                    ctxt.syllabic = 'single'
+                    # detected separator: append a elision to the current context
+                    ctxt.elision = Textual(word, ctxt=ctxt)
+                elif not isSeparator:
+                    syllables = re.split('(-)', word)
+                    # in the case, that the string starts or ends with one of the separators,
+                    # the list will contain empty strings '' at start or end, due to re.split's beavior
+                    # => remove such, if they are not the only text!
+                    # => e.g. the rawText '-' will yield syllables=[ '-', ''] which will generated a single textual '' of syllabic type "begin"
+                    if 2<len(syllables) and syllables[0] == '':
+                        syllables = syllables[1:]
+                    if 2<len(syllables) and syllables[-1] == '':
+                        syllables = syllables[:-1]
+
+                    for syllTxt in syllables:
+                        # the elision-string "-" starts a new syllable
+                        # also the preceeding syllable needs to be adjusted to either 'middle' or 'begin' type
+                        if syllTxt == '-':
+                            if ctxt.syllabic == 'single':
+                                ctxt.syllabic = 'begin'
+                            elif ctxt.syllabic == 'end':
+                                ctxt.syllabic = 'middle'
+                            # strigs like 'asdf--ghjk' may be used to insert empty textuals.
+                            if 0<len(self._textuals) and not ctxt is self._textuals[-1].context:
+                                # append a empty textual to the list, in order not to save the context in the lise
+                                self._textuals.append(Textual('', ctxt))
+                            # a new syllabic element is started by creating the respective context object
+                            ctxt = Textual.Context()
+                            ctxt.syllabic = 'end'
+                            ctxt.elision = Textual('-', ctxt)
+                        else:
+                            txt = Textual(syllTxt, ctxt)
+                            self._textuals.append(txt)
+
+    def composeText(self, elisions=True, sylStart='-', wordStart=' ') -> str:
+        '''
+        composes a text representation of the contained lyrics
+
+        user can set whether and how elisions in the lyrics shall be represented in the returned text:
+        if elisions==False, the elisions stored will not be inserted into the output text.
+        if elisions==True, the stored elision representation is inserted, and sylStart and wordStart in absence of text
+        elisions may also be set to a string, which will overwrite the internal representation.
+        This may be used to enforce consistent output or to avoid rare unicode symbols potentially used in elisions
+        independent
+        if elisions==False, always sylStart and wordStart will be still be inserted at syllable or word boundaries,
+        wherever syllabic information is present. Also at the start or end of the resulting string
+        They may be suppressed by setting them to an empty string
+        :param elisions: bool whether to display elisions or symbol to use instead of the stored elision representations
+        :param sylStart: text inserted before the start of a new syllable, if not elisions or no elision text is stored
+        :param wordStart: text inserted before start of a new word, if not elisions or no elision text is stored
+        :return:
+        '''
+        # TODO: add some example code to the doc
+        rawTxtAccu = ''
+        ctxt = None
+        for tx in self._textuals:
+            if not tx.context is ctxt:
+                #  entered a new syllabic context=> prepend spacers as necessary
+                ctxt = tx.context
+                if ctxt and ctxt.syllabic:
+                    if ctxt.syllabic in ['begin', 'single']:
+                        if not elisions or not ctxt.elision:
+                            rawTxtAccu += wordStart
+                        elif ctxt.elision and isinstance(elisions, str):
+                            rawTxtAccu += elisions
+                        elif ctxt.elision and ctxt.elision.rawText:
+                            rawTxtAccu += ctxt.elision.rawText
+                        else:
+                            rawTxtAccu += '_'
+                    elif ctxt.syllabic in ['middle', 'end']:
+                        if not elisions or not ctxt.elision:
+                            rawTxtAccu += sylStart
+                        elif ctxt.elision and isinstance(elisions, str):
+                            rawTxtAccu += elisions
+                        elif ctxt.elision and ctxt.elision.rawText:
+                            rawTxtAccu += ctxt.elision.rawText
+                        else:
+                            rawTxtAccu += '_'
+                elif ctxt and ctxt.elision:
+                    # left a previous context with an elision, while the new context does not have a syllabic setting
+                    # no official part of music-xml, unsure about other formats
+                    # supported as an additional feature and for tolerance of malformed mxml
+                    if isinstance(elisions, str):
+                        rawTxtAccu += elisions
+                    elif elisions and prevCtxt.elision.rawText:
+                        rawTxtAccu += prevCtxt.elision.rawText
+                    else:
+                        rawTxtAccu += wordStart
+            prevCtxt = tx.context
+            rawTxtAccu += tx.rawText
+        return rawTxtAccu
+
 class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     '''
     An object representing a single Lyric as part of a note's .lyrics property.
@@ -223,7 +427,7 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     <music21.note.Lyric number=3 syllabic=single text='hel-'>
 
     Lyrics have four properties: text, number, identifier, syllabic (single,
-    begin, middle, end)
+    begin, middle, end, None)
 
     >>> l3.text
     'hel-'
@@ -247,7 +451,7 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     __slots__ = (
         '_identifier',
         '_number',
-        '_textuals',
+        '_content',
     )
 
     # INITIALIZER #
@@ -256,27 +460,20 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         super().__init__()
         self._identifier = None
         self._number = None
-        self._textuals = []
+        self._content = None
 
         # given as begin, middle, end, or single
         syllabic = kwargs.get('syllabic', None)
+        # bolean
         applyRaw = kwargs.get('applyRaw', None)
 
         if text is not None:
-            if not syllabic:
-                self.setTextAndSyllabic(text, applyRaw)
-            elif applyRaw in [True, None]:
-                # create a single textual element with the specifid syllabic context and text
-                ctxt = Textual.Context()
-                ctxt.syllabic = syllabic
-                self._textuals = [Textual(text, ctxt)]
-            else:
-                raise ValueError('Can not enforce the desired syllabic type while parsing the text (applyRaw==False)')
+            self._content = LyricText(text, applyRaw=applyRaw, syllabic=syllabic)
         elif syllabic:
             # in general text-less lyrics with a syllabic context seem pointless seem point-less
             # For example in music-XML at least a text entry with value '' is required by the DTD
             # For this reson we also expect the user to specify some text (even if it is '')
-            raise ValueError('setting syllabic requires a text')
+            raise ValueError('setting a syllabic type requires a text')
 
         self.number = number
         self.identifier = kwargs.get('identifier', None)
@@ -324,10 +521,6 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     def identifier(self, value):
         self._identifier = value
 
-    @property
-    def textuals(self) -> List[Textual]:
-        return self._textuals
-
     def composeText(self, elisions=True, sylStart='-', wordStart=' ') -> str:
         '''
         composes a text representation of the contained lyrics
@@ -347,44 +540,16 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         :return:
         '''
         # TODO: add some example code to the doc
-        rawTxtAccu = ''
-        ctxt = None
-        for tx in self._textuals:
-            if not tx.context is ctxt:
-                #  entered a new syllabic context=> prepend spacers as necessary
-                ctxt = tx.context
-                if ctxt and ctxt.syllabic:
-                    if ctxt.syllabic in ['begin', 'single']:
-                        if not elisions or not ctxt.elision:
-                            rawTxtAccu += wordStart
-                        elif ctxt.elision and isinstance(elisions, str):
-                            rawTxtAccu += elisions
-                        elif ctxt.elision and ctxt.elision.rawText:
-                            rawTxtAccu += prevCtxt.elision.rawText
-                        else:
-                            rawTxtAccu += '_'
-                    elif ctxt.syllabic in ['middle', 'end']:
-                        if not elisions or not ctxt.elision:
-                            rawTxtAccu += sylStart
-                        elif ctxt.elision and isinstance(elisions, str):
-                            rawTxtAccu += elisions
-                        elif ctxt.elision and ctxt.elision.rawText:
-                            rawTxtAccu += prevCtxt.elision.rawText
-                        else:
-                            rawTxtAccu += '_'
-                elif ctxt and ctxt.elision:
-                    # left a previous context with an elision, while the new context does not have a syllabic setting
-                    # no official part of music-xml, unsure about other formats
-                    # supported as an additional feature and for tolerance of malformed mxml
-                    if isinstance(elisions, str):
-                        rawTxtAccu += elisions
-                    elif elisions and prevCtxt.elision.rawText:
-                        rawTxtAccu += prevCtxt.elision.rawText
-                    else:
-                        rawTxtAccu += wordStart
-            prevCtxt = tx.context
-            rawTxtAccu += tx.rawText
-        return rawTxtAccu
+        if type(self._content) is LyricText:
+            return self._content.composeText(elisions, sylStart, wordStart)
+        elif type(self._content) is LyricAbstraction:
+            return wordStart + str(self._content) + wordStart
+        elif type(self._content) is LyricExtension:
+            return ''
+        elif self._content is None:
+            return ''
+        else:
+            raise NotImplementedError()
 
     @property
     def rawText(self) -> str:
@@ -410,19 +575,14 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     def syllabic(self):
         '''
         retrieve the syllabic type of the lyrics, for backwards compatibility
-        for complex lyrics composed of several syllables, this will raise an exception
+        for complex lyrics composed of several syllables, this will raise an exception,
+        # TODO: humming, laughing, extend?
         :return: one of [None, 'single', 'begin', 'middle', 'end']
         '''
-        if not self._textuals or 0==len(self._textuals):
+        if self._content and type(self._content) is LyricText:
+            return self._content.syllabic
+        else:
             return None
-        # a single context instance spanning over all _textuals indicates a unique syllabic type
-        if self._textuals[0].context is self._textuals[-1].context:
-            uniqueCtxt = self._textuals[0].context
-            if not uniqueCtxt:
-                return None
-            else:
-                return uniqueCtxt.syllabic
-        raise RuntimeError('Lyric object contains complex syllabic substructure instead of unique syllabic type')
 
     @property
     def number(self) -> int:
@@ -454,62 +614,19 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     def appendTextual(self, textual : Textual):
         self._textuals.append(textual)
 
+    @property
+    def content(self):
+        return self._content
+
+    @content.setter
+    def content(self, newContent):
+        if type(newContent) == LyricText or type(newContent) == LyricExtension:
+            self._content = newContent
+
     def setTextAndSyllabic(self, rawText, applyRaw=False):
-        '''
-        Given a setting for rawText and applyRaw,
-        sets the syllabic type for a lyric based on the rawText:
-
-        >>> l = note.Lyric()
-        >>> l.setTextAndSyllabic('hel-lo_world')
-        >>> l.text
-
-        :type rawText: str
-        :type applyRaw: bool
-        :rtype: None
-        '''
-        # do not want to do this unless we are sure this is not a string
-        # possible might alter unicode or other string-like representations
-        if not isinstance(rawText, str):
-            rawText = str(rawText)
-
-        if applyRaw is True:
-            self.textuals = [Textual(rawText, applyRaw=True)]
-        else:
-            # split into words according to hyphenation
-            words = re.split(r'(\s+|_)', rawText.strip())
-            ctxt = Textual.Context()
-            ctxt.syllabic = 'single'
-            for word in words:
-                syllables = re.split('(-)', word)
-                # in the case, that the string starts or ends with one of the separators,
-                # the list will contain empty strings '' at start or end, due to re.split's beavior
-                # => remove such, if they are not the only text!
-                # => e.g. the rawText '-' will yield syllables=[ '-', ''] which will generated a single textual '' of syllabic type "begin"
-                if 2<len(syllables) and syllables[0] == '':
-                    syllables = syllables[1:]
-                if 2<len(syllables) and syllables[-1] == '':
-                    syllables = syllables[:-1]
-
-                for syllTxt in syllables:
-                    # the elision-string "-" starts a new syllable
-                    # also the preceeding syllable needs to be adjusted to either 'middle' or 'begin' type
-                    if syllTxt == '-':
-                        if ctxt.syllabic == 'single':
-                            ctxt.syllabic = 'begin'
-                        elif ctxt.syllabic == 'end':
-                            ctxt.syllabic = 'middle'
-                        # strigs like 'asdf--ghjk' may be used to insert empty textuals.
-                        if 0<len(self._textuals) and not ctxt is self._textuals[-1].context:
-                            # append a empty textual to the list, in order not to save the context in the lise
-                            self._textuals.append(Textual('', ctxt))
-                        # a new syllabic element is started by creating the respective context object
-                        ctxt = Textual.Context()
-                        ctxt.syllabic = 'end'
-                        ctxt.elision = Textual('-', ctxt)
-                    else:
-                        txt = Textual(syllTxt, ctxt)
-                        self._textuals.append(txt)
-            # at a word end, the syllabic context mus either be 'single' or 'end'
+        if (not self._content) or type(self._content) is LyricText:
+            self._content = LyricText()
+        self._content.setTextAndSyllabic(self, rawText, applyRaw=applyRaw)
 
 # ------------------------------------------------------------------------------
 
