@@ -5244,10 +5244,13 @@ class MeasureExporter(XMLExporterBase):
         elif type(l.content) is note.LyricExtension:
             mxLyric.append(self.extensionToXml(l.content))
         elif type(l.content) is note.LyricAbstraction:
-            if l.content == LyricAbstraction.humming:
+            if l.content == note.LyricAbstraction.humming:
                 mxElem = Element('humming')
-            elif l.content == LyricAbstraction.laughing:
+            elif l.content == note.LyricAbstraction.laughing:
                 mxElem = Element('laughing')
+            else:
+                raise NotImplementedError()
+            mxLyric.append(mxElem)
         elif l.content is not None:
             raise NotImplementedError()
         # TODO: end-line

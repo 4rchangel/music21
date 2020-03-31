@@ -620,8 +620,10 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
 
     @content.setter
     def content(self, newContent):
-        if type(newContent) == LyricText or type(newContent) == LyricExtension:
+        if newContent is None or type(newContent)in [LyricText, LyricExtension, LyricAbstraction]:
             self._content = newContent
+        else:
+            raise RuntimeError('Invalid type for lyrics content')
 
     def setTextAndSyllabic(self, rawText, applyRaw=False):
         if (not self._content) or type(self._content) is LyricText:
