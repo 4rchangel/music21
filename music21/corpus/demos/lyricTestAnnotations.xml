@@ -1,0 +1,161 @@
+<?xml version="1.0" encoding="UTF-8" standalone="no"?>
+<!DOCTYPE score-partwise PUBLIC
+        "-//Recordare//DTD MusicXML 3.0 Partwise//EN"
+        "http://www.musicxml.org/dtds/partwise.dtd">
+<score-partwise version="3.0">
+	<work>
+		<work-title>MusicXML Extended Lyric Test</work-title>
+	</work>
+	<identification>
+		<miscellaneous>
+			<miscellaneous-field name="description">music21 multiple verses</miscellaneous-field>
+		</miscellaneous>
+	</identification>
+	<part-list>
+		<score-part id="P1">
+			<part-name>test</part-name>
+		</score-part>
+	</part-list>
+	<part id="P1">
+		<!--==========================[1,1]=============================-->
+		<measure number="1">
+			<attributes>
+				<divisions>1</divisions>
+				<time symbol="common">
+					<beats>4</beats>
+					<beat-type>4</beat-type>
+				</time>
+				<clef number="1">
+					<sign>G</sign>
+					<line>2</line>
+				</clef>
+			</attributes>
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>1</duration>
+			<voice>1</voice>
+			<lyric name="first" number="1" justify="right" default-y="-64.10">
+				<syllabic>begin</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">Hel</text>
+			</lyric>
+		</note>
+
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>1</duration>
+			<voice>1</voice>
+			<type>quarter</type>
+			<stem default-y="9.51">up</stem>
+		</note>
+
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>1</duration>
+			<voice>1</voice>
+		</note>
+
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>1</duration>
+			<voice>1</voice>
+			<lyric number="1" justify="right" default-y="-148.13">
+				<syllabic>end</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">lo</text>
+			</lyric>
+		</note>
+	</measure>
+	<measure number="2">
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>2</duration>
+			<voice>1</voice>
+			<type>half</type>
+			<stem default-y="9.51">up</stem>
+			<lyric name="first" number="1" justify="right" default-y="-64.10">
+				<syllabic>single</syllabic>
+				<text font-family="CenturySchL" font-size="11" font-weight="normal"
+					font-style="normal" xml:lang="de">World!</text>
+                <extend type="start"/>
+				<end-line/>
+				<end-paragraph/>
+				<footnote>In particular to the lonely nerds actually reading this...</footnote>
+				<level reference="yes" parentheses="yes" bracket="no" size="cue">BUH!</level>
+			</lyric>
+		</note>
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>1</duration>
+			<voice>1</voice>
+			<type>quarter</type>
+			<stem default-y="9.51">up</stem>
+			<lyric name="first" number="1" justify="right" default-y="-64.10">
+                <extend type="continue"/>
+			</lyric>
+		</note>
+		<note>
+			<pitch>
+				<step>A</step>
+				<octave>4</octave>
+			</pitch>
+			<duration>1</duration>
+			<voice>1</voice>
+			<type>quarter</type>
+			<stem default-y="9.51">up</stem>
+			<lyric name="first" number="1" justify="right" default-y="-64.10">
+                <extend type="stop"/>
+			</lyric>
+		</note>
+	</measure>
+    <measure number="3">
+        <note>
+            <pitch>
+                <step>A</step>
+                <octave>4</octave>
+            </pitch>
+            <duration>2</duration>
+            <voice>1</voice>
+            <type>half</type>
+	    <stem default-y="9.51">up</stem>
+		<lyric name="first" number="1" justify="right" default-y="-64.10">
+            <humming/>
+   			<end-paragraph/>
+	    		<footnote>Hum it out loud!</footnote>
+    		</lyric>
+        </note>
+        <note>
+            <pitch>
+                <step>A</step>
+                <octave>4</octave>
+            </pitch>
+            <duration>2</duration>
+            <voice>1</voice>
+            <type>half</type>
+		    <stem default-y="9.51">up</stem>
+    		<lyric name="first" number="1" justify="right" default-y="-64.10">
+                <laughing></laughing>
+    			<end-paragraph/>
+    		</lyric>
+        </note>
+    </measure>
+	</part>
+</score-partwise>
