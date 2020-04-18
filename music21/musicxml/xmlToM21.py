@@ -4112,6 +4112,10 @@ class MeasureParser(XMLParserBase):
                     ly.content = note.LyricAbstraction(mxChild.tag)
                 else:
                     raise RuntimeError('Malformed musixml! Multiple contents for lyric element.')
+            elif mxChild.tag == 'end-line':
+                ly.endLine = True
+            elif mxChild.tag == 'end-paragraph':
+                ly.endParagraph = True
         if lyrText:
             if not ly.content:
                 ly.content = lyrText

@@ -452,6 +452,8 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         '_identifier',
         '_number',
         '_content',
+        'endLine',
+        'endParagraph'
     )
 
     # INITIALIZER #
@@ -461,6 +463,8 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         self._identifier = None
         self._number = None
         self._content = None
+        self.endLine = False
+        self.endParagraph = False
 
         # given as begin, middle, end, or single
         syllabic = kwargs.get('syllabic', None)

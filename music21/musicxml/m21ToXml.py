@@ -5253,9 +5253,12 @@ class MeasureExporter(XMLExporterBase):
             mxLyric.append(mxElem)
         elif l.content is not None:
             raise NotImplementedError()
-        # TODO: end-line
-        # TODO: end-paragraph
-        # TODO: editorial
+
+        if l.endLine == True:
+            mxLyric.append(Element('end-line'))
+        if l.endParagraph == True:
+            mxLyric.append(Element('end-paragraph'))
+
         if l.identifier is not None:
             mxLyric.set('name', str(l.identifier))
         if l.number is not None:
