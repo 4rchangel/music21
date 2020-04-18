@@ -5263,6 +5263,7 @@ class MeasureExporter(XMLExporterBase):
         elif l.identifier is not None:
             mxLyric.set('number', str(l.identifier))
 
+        self.setEditorial(mxLyric, l)
         self.setStyleAttributes(mxLyric, l,
                                 ('justify', 'placement'),
                                 ('justify', 'placement'))

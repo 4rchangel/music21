@@ -4117,8 +4117,8 @@ class MeasureParser(XMLParserBase):
                 ly.content = lyrText
             else:
                 raise RuntimeError('Malformed musixml! Multiple contents for lyric element.')
+        self.setEditorial(mxLyric, ly)
 
-        # TODO: id when lyrics get ids...
         # set lyric number and account for identifiers
         number = mxLyric.get('number')
         try:
