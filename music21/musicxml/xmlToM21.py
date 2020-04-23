@@ -4058,28 +4058,17 @@ class MeasureParser(XMLParserBase):
         else:
             ly = inputM21
 
-        # sequentially parse the child elements which constitute the text group them into semantic contexts
-        lyrText = None
-        ctxt = note.Textual.Context()
+        # sequentially parse the child elements
+        # group text elements toegether into syllabic contexts, starting with a empty context and textlist
+        textContent = None
+        # prepare a empty group
+        sylGroup = note.LyricText.SylGroup()
         for mxChild in mxLyric:
             if mxChild.tag == 'syllabic':
-                # new syllable started: create a new context for parsing the next textual
                 if textStripValid(mxChild):
-                    ctxt.syllabic = mxChild.text.strip()
+                    sylGroup.context.syllabic = mxChild.text.strip()
                 else:
-                    ctxt.syllabic = None # TODO: log warning
-            elif mxChild.tag == 'elision':
-                # starts a new context
-                ctxt = note.Textual.Context()
-                if textStripValid(mxChild):
-                    elTxt = mxChild.text.strip()
-                else:
-                    elTxt = '_' # TODO: log warning
-                elision = note.Textual(elTxt, ctxt)  # Note: circular reference
-                # parse style
-                self.setPrintStyle(mxChild, elision)
-                # append to context
-                ctxt.elision = elision
+                    sylGroup.context.syllabic = None # TODO: log warning
             elif mxChild.tag == 'text':
                 if textStripValid(mxChild):
                     rawText = mxChild.text # .strip() could be applied, if we are strict, expecting proper syllabics
@@ -4090,19 +4079,37 @@ class MeasureParser(XMLParserBase):
                     # still a textual element shall be created in order to capture the structure (and potential context)
                     # because the context (like elisions) may be existing in conjunction with a textual element
                     rawText = None
-                t = note.Textual(rawText, ctxt)
+                t = note.Textual(rawText)
                 # parse style attributes
                 self.setPrintStyle(mxChild, t)
-                # append
-                if not lyrText:
-                    lyrText = note.LyricText()
-                lyrText.textuals.append(t)
+                # append to the current syllabic Group
+                sylGroup.textuals.append(t)
+                # Note: this late init here ensures, that context info like syllabic type exist only toegether with text
+                if not textContent:
+                    textContent = note.LyricText()
+                    textContent.syllabicGroups.append(sylGroup)
+            elif mxChild.tag == 'elision':
+                # elisions indicate start of a new syllabic group but may not start the first text-group itself
+                if not textContent or len(textContent.syllabicGroups)==0 or len(sylGroup.textuals)==0:
+                    raise MusicXMLImportException("elision must not be the first element of lyric element")
+                # prepare the new group
+                sylGroup = note.LyricText.SylGroup()
+                textContent.syllabicGroups.append(sylGroup)
+                # parse the elision data
+                if textStripValid(mxChild):
+                    elTxt = mxChild.text.strip()
+                else:
+                    elTxt = '_' # TODO: log warning
+                elision = note.Textual(elTxt)
+                self.setPrintStyle(mxChild, elision)
+                # save elision of created group
+                sylGroup.context.elision = elision
             elif mxChild.tag == 'extend':
                 extension = note.LyricExtension(note.LyricExtension.ExtensionType(str(mxChild.get('type'))))
-                # TODO: only allowed extension typ here is 'stop'. Maybe force or check and log/raise?
                 self.setPrintStyle(mxChild, extension)
-                if lyrText:
-                    lyrText.extension = extension
+                if textContent:
+                    # TODO: only allowed extension typ at this place is 'stop'. Maybe force or check and log/raise?
+                    textContent.extension = extension
                 elif not ly.content:
                     ly.content = extension
                 else:
@@ -4116,9 +4123,9 @@ class MeasureParser(XMLParserBase):
                 ly.endLine = True
             elif mxChild.tag == 'end-paragraph':
                 ly.endParagraph = True
-        if lyrText:
+        if textContent:
             if not ly.content:
-                ly.content = lyrText
+                ly.content = textContent
             else:
                 raise RuntimeError('Malformed musixml! Multiple contents for lyric element.')
         self.setEditorial(mxLyric, ly)

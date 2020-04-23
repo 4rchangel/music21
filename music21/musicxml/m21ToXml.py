@@ -5219,27 +5219,29 @@ class MeasureExporter(XMLExporterBase):
         mxLyric = Element('lyric')
 
         if type(l.content) is note.LyricText:
-            ctxt=None
-            for tx in l.content.textuals:
-                if not tx.context is ctxt:
-                    # context change! Treat elisions and syllabic
-                    if tx.context.elision:
+            for sylGroup in l.content.syllabicGroups:
+                if sylGroup.context:
+                    elis = sylGroup.context.elision
+                    # treat preceeding elision
+                    if elis:
                         mxEl = Element('elision')
-                        mxEl.text = '' if not tx.context.elision.rawText else tx.context.elision.rawText
-                        self.setFont(mxEl, tx.context.elision)
-                        self.setTextFormatting(mxEl, tx.context.elision)
+                        # TODO: maybe some sybol, e.g. '_'? are empty elision texts allowed?
+                        mxEl.text = '' if not elis.rawText else elis.rawText
+                        self.setFont(mxEl, elis)
+                        self.setTextFormatting(mxEl, elis)
                         mxLyric.append(mxEl)
                     # add syllabic, if given
-                    _setTagTextFromAttribute(tx.context, mxLyric, 'syllabic')
-                    # update current context
-                    ctxt = tx.context
-                # append text element
-                mxTxt = Element('text')
-                mxTxt.text = tx.rawText
-                self.setPrintStyle(mxTxt, tx)
+                    _setTagTextFromAttribute(sylGroup.context, mxLyric, 'syllabic')
 
-                mxLyric.append(mxTxt)
+                for tx in sylGroup.textuals:
+                    # append text element
+                    mxTxt = Element('text')
+                    mxTxt.text = tx.rawText
+                    self.setPrintStyle(mxTxt, tx)
+                    mxLyric.append(mxTxt)
+            # add extension
             if l.content.extension:
+                # note: only allowed value at this place is "start". TODO: check?
                 mxLyric.append(self.extensionToXml(l.content.extension))
         elif type(l.content) is note.LyricExtension:
             mxLyric.append(self.extensionToXml(l.content))
