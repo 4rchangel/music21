@@ -4105,7 +4105,12 @@ class MeasureParser(XMLParserBase):
                 # save elision of created group
                 sylGroup.context.elision = elision
             elif mxChild.tag == 'extend':
-                extension = note.LyricExtension(note.LyricExtension.ExtensionType(str(mxChild.get('type'))))
+                exTypeStr = str(mxChild.get('type'))
+                try:
+                    extType = note.LyricExtension.ExtensionType(exTypeStr)
+                except ValueError:
+                    extType = None
+                extension = note.LyricExtension(extType)
                 self.setPrintStyle(mxChild, extension)
                 if textContent:
                     # TODO: only allowed extension typ at this place is 'stop'. Maybe force or check and log/raise?

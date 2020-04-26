@@ -268,8 +268,8 @@ class LyricText:
         if not self._sylGroups or 0 == len(self._sylGroups):
             return None
         # a single context instance spanning over all _textuals indicates a unique syllabic type
-        if len(self._sylGroups == 1):
-            return self._sylGroups[0].context if (self._sylGroups[0]) else None
+        if len(self._sylGroups) == 1:
+            return self._sylGroups[0].context.syllabic if (self._sylGroups[0]) else None
 
         raise RuntimeError('Lyric object contains complex syllabic substructure instead of unique syllabic type')
 
@@ -297,7 +297,7 @@ class LyricText:
         if applyRaw is True:
             ctxt = Textual.Context()
             ctxt.syllabic = syllabic
-            self._sylGroups = [self.SylGroup(context=ctxt, textuals=[Textual(rawText, ctxt, applyRaw=True)])]
+            self._sylGroups = [self.SylGroup(context=ctxt, textuals=[Textual(rawText)])]
         else:
             if syllabic:
                 raise ValueError('Can not enforce a desired syllabic type while parsing the text (applyRaw==False)')
@@ -306,19 +306,24 @@ class LyricText:
             # prepare empty sylGroups and a new context for first syllable
             ctxt = Textual.Context()
             ctxt.syllabic = 'single'
-            self._sylGroups = [self.SylGroup(context=ctxt, textuals=[])]
+            sylGroup = self.SylGroup(context=ctxt, textuals=[])
+            self._sylGroups = []
 
             # split into words according to hyphenation. Separators appear in the word list
             words = re.split(r'(\s+|_)', rawText.strip())
             for word in words:
                 isSeparator = re.match(r'(?:\s+|_)', word)
-                if ctxt and isSeparator:
-                    # new word, new context, new syllabic group
+                if sylGroup.context and isSeparator:
+                    # start a new word
+                    # save the completed sylGroup and create the new one
+                    if len(sylGroup.textuals)!=0:
+                        self._sylGroups.append(sylGroup)
+                    # new syllabic group with new context for the new word
                     ctxt = Textual.Context()
                     ctxt.syllabic = 'single'
-                    # detected separator: append a elision to the current context
+                    # detected separator: add a [preceeding] elision to the new context
                     ctxt.elision = Textual(word)
-                    self._sylGroups = [self.SylGroup(context=ctxt, textuals=[])]
+                    sylGroup = self.SylGroup(context=ctxt, textuals=[])
 
                 elif not isSeparator:
                     syllables = re.split(r'(-)', word)
@@ -332,7 +337,7 @@ class LyricText:
                         syllables = syllables[:-1]
 
                     for syllTxt in syllables:
-                        # the elision-string "-" starts a new syllable
+                        # the string "-" starts a new syllable
                         if syllTxt == '-':
                             # the preceeding syllable needs to be adjusted to either 'middle' or 'begin' type
                             if ctxt.syllabic == 'single':
@@ -340,16 +345,21 @@ class LyricText:
                             elif ctxt.syllabic == 'end':
                                 ctxt.syllabic = 'middle'
                             # strigs like 'asdf--ghjk' might be used to insert empty text elements.
-                            if 0==len(self._sylGroups[-1].textuals):
-                                # append a empty textual to the previous sylGroup,
-                                self._textuals.append(Textual(''))
+                            if 0==len(sylGroup.textuals) and 0!=len(self._sylGroups):
+                                sylGroup.textuals.append(Textual(''))
+                            if 0!=len(sylGroup.textuals):
+                                self._sylGroups.append(sylGroup)
                             # start the new syllabic group
                             ctxt = Textual.Context()
                             ctxt.syllabic = 'end'
-                            ctxt.elision = Textual('-')
+                            sylGroup = self.SylGroup(context=ctxt, textuals=[])
+                            #ctxt.elision = Textual('-')
                         else:
                             txt = Textual(syllTxt)
-                            self._sylGroups[-1].textuals.append(txt)
+                            sylGroup.textuals.append(txt)
+            # append the last syllabic group
+            if 0 != len(sylGroup.textuals):
+                self._sylGroups.append(sylGroup)
 
     def composeText(self, elisions=True, sylStart='-', wordStart=' ') -> str:
         '''
