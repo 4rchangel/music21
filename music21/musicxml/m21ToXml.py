@@ -5194,7 +5194,7 @@ class MeasureExporter(XMLExporterBase):
     # -----------------------------
     # note helpers...
     def extensionToXml(self, ext : note.LyricExtension):
-        mxExt = Element('extension')
+        mxExt = Element('extend')
         self.setPrintStyle(mxExt, ext)
         extType = ext.extension_type
         if extType:
