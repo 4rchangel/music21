@@ -1,4 +1,4 @@
-##!/usr/bin/env python
+##!/usr/bin/env python3
 # -*- coding: utf-8 -*-
 # ------------------------------------------------------------------------------
 # Name:          setup.py
@@ -7,7 +7,7 @@
 # Authors:       Christopher Ariza
 #                Michael Scott Cuthbert
 #
-# Copyright:     (c) 2009-2020 Michael Scott Cuthbert and the music21 Project
+# Copyright:     (c) 2009-2021 Michael Scott Cuthbert and the music21 Project
 # License:       BSD, see license.txt
 # ------------------------------------------------------------------------------
 
@@ -26,7 +26,7 @@ m21version = __version__ # @UndefinedVariable
 DESCRIPTION = 'A Toolkit for Computer-Aided Musical Analysis.'
 DESCRIPTION_LONG = """A Toolkit for Computer-Aided Musical Analysis.
                         Developed by cuthbertLab,
-                        Michael Scott Cuthbert (Associate Professor, MIT), 
+                        Michael Scott Cuthbert (Associate Professor, MIT),
                         Principal Investigator.
                         The development of music21 is supported by the
                         generosity of the Seaver Institute and the NEH."""
@@ -62,11 +62,13 @@ classifiers = [
     'Topic :: Software Development :: Libraries :: Python Modules',
 ]
 
+download_base = 'https://github.com/cuthbertLab/music21/releases/download/'
+
 if __name__ == '__main__':
     setuptools.setup(
         name='music21',
         version=m21version,
-        python_requires='>=3.6',
+        python_requires='>=3.7',
         description=DESCRIPTION,
         long_description=DESCRIPTION_LONG,
         author='Michael Scott Cuthbert, the music21 project, others',
@@ -74,7 +76,7 @@ if __name__ == '__main__':
         license='BSD',
         url='https://github.com/cuthbertLab/music21',
         classifiers=classifiers,
-        download_url='https://github.com/cuthbertLab/music21/releases/download/v%s/music21-%s.tar.gz' % (m21version, m21version),
+        download_url=f'{download_base}v{m21version}/music21-{m21version}.tar.gz',
         packages=setuptools.find_packages(exclude=['ez_setup']),
         install_requires=INSTALL_REQUIRES,
         include_package_data=True,

@@ -135,14 +135,10 @@ def monophonicStreamFromFile(fileName, useScale=None):
         durationList) = audioSearchBase.joinConsecutiveIdenticalPitches(detectedPitchObjects)
     myScore, unused_length_part = audioSearchBase.notesAndDurationsToStream(
         notesList, durationList, removeRestsAtBeginning=True)
-    return myScore.parts[0]
+    return myScore.parts.first()
 
 
 class TestExternal(unittest.TestCase):  # pragma: no cover
-    pass
-
-    def runTest(self):
-        pass
 
     def xtestRunTranscribe(self):
         saveFile = environLocal.getRootTempDir() / 'new_song.wav'

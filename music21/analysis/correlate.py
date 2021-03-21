@@ -107,7 +107,7 @@ class ActivityMatch:
         No dynamics here.
 
         >>> s = corpus.parse('bach/bwv8.6.xml')
-        >>> am = analysis.correlate.ActivityMatch(s.parts[0].flat)
+        >>> am = analysis.correlate.ActivityMatch(s.parts.first().flat)
         >>> am.pitchToDynamic()
         Traceback (most recent call last):
         music21.analysis.correlate.CorrelateException: cannot create correlation:
@@ -116,7 +116,7 @@ class ActivityMatch:
         Many dynamics
 
         >>> s = corpus.parse('schoenberg/opus19/movement2')
-        >>> am = analysis.correlate.ActivityMatch(s.parts[0].flat)
+        >>> am = analysis.correlate.ActivityMatch(s.parts.first().flat)
         >>> data = am.pitchToDynamic()
         >>> len(data)
         39
@@ -147,7 +147,7 @@ class ActivityMatch:
 
             # if hasattr(entrySrc, 'pitches'):  # a chord
             if entrySrc.isChord:
-                sub = [n for n in entrySrc]
+                sub = list(entrySrc)
             else:
                 sub = [entrySrc]
 
@@ -184,9 +184,6 @@ class ActivityMatch:
 # ------------------------------------------------------------------------------
 class Test(unittest.TestCase):
 
-    def runTest(self):
-        pass
-
     def testCopyAndDeepcopy(self):
         '''
         Test copying all objects defined in this module
@@ -203,6 +200,8 @@ class Test(unittest.TestCase):
             if match:
                 continue
             name = getattr(sys.modules[self.__module__], part)
+
+            # noinspection PyTypeChecker
             if callable(name) and not isinstance(name, types.FunctionType):
                 try:  # see if obj can be made w/ args
                     obj = name()

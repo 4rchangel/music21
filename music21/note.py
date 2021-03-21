@@ -19,7 +19,7 @@ and used to configure, :class:`~music21.note.Note` objects.
 import copy
 import unittest
 
-from typing import Optional
+from typing import Optional, List, Union, Tuple, Iterable
 
 from music21 import base
 from music21 import beam
@@ -35,8 +35,7 @@ from music21 import tie
 from music21 import volume
 
 from music21 import environment
-_MOD = 'note'
-environLocal = environment.Environment(_MOD)
+environLocal = environment.Environment('note')
 
 noteheadTypeNames = (
     'arrow down',
@@ -77,6 +76,14 @@ stemDirectionNames = (
     'up',
 )
 
+def __dir__():
+    out = [n for n in globals() if not n.startswith('__') and not n.startswith('Test')]
+    for n in ('Optional', 'List', 'Union', 'Tuple', 'Iterable'):
+        out.remove(n)
+    out.remove('unittest')
+    out.remove('copy')
+    out.remove('_DOC_ORDER')
+    return out
 
 # -----------------------------------------------------------------------------
 class LyricException(exceptions21.Music21Exception):
@@ -90,7 +97,11 @@ class NoteException(exceptions21.Music21Exception):
 class NotRestException(exceptions21.Music21Exception):
     pass
 
+
 # ------------------------------------------------------------------------------
+SYLLABIC_CHOICES: List[Optional[str]] = [
+    None, 'begin', 'single', 'end', 'middle', 'composite',
+]
 
 
 class Lyric(prebase.ProtoM21Object, style.StyleMixin):
@@ -117,7 +128,7 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     <music21.note.Lyric number=3 syllabic=single text='hel-'>
 
     Lyrics have four properties: text, number, identifier, syllabic (single,
-    begin, middle, end)
+    begin, middle, end, or (not in musicxml) composite)
 
     >>> l3.text
     'hel-'
@@ -134,6 +145,34 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     descriptive identifier separately. The descriptive identifier is by default
     the same as the number, but in cases where a string identifier is present,
     it will be different.
+
+    Both music21 and musicxml support multiple `Lyric` objects in the same stanza,
+    for instance, if there is an elision on a note then multiple lyrics with
+    different syllabics can appear on a single note.  In music21 these are supported
+    by setting .components into a list of `Lyric` object.  For instance in
+    the madrigal "Il bianco e dolce cigno", the "co" and "e" of "bianco e"
+    are elided into a single lyric:
+
+    >>> bianco = note.Lyric()
+    >>> co = note.Lyric('co', syllabic='end')
+    >>> e = note.Lyric('e', syllabic='single')
+    >>> bianco.components = [co, e]
+    >>> bianco.isComposite
+    True
+    >>> bianco.text
+    'co e'
+    >>> bianco.syllabic
+    'composite'
+    >>> e.elisionBefore = '_'
+    >>> bianco.text
+    'co_e'
+
+    >>> [component.syllabic for component in bianco.components]
+    ['end', 'single']
+
+    Custom elision elements for composite components will be supported later.
+
+    New in v6.7 -- composite components, elisionBefore
     '''
     _styleClass = style.TextStylePlacement
     # CLASS VARIABLES #
@@ -141,25 +180,32 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
     __slots__ = (
         '_identifier',
         '_number',
-        'syllabic',
-        'text',
+        '_syllabic',
+        '_text',
+        'components',
+        'elisionBefore',
     )
 
     # INITIALIZER #
 
     def __init__(self, text=None, number=1, **kwargs):
         super().__init__()
-        self._identifier = None
-        self._number = None
+        self._identifier: Optional[str] = None
+        self._number: Optional[int] = None
+        self._text: Optional[str] = None
+        self._syllabic = None
+        self.components: Optional[List['music21.note.Lyric']] = None
+        self.elisionBefore = ' '
 
-        # these are set by setTextAndSyllabic
-        self.text = None
-        # given as begin, middle, end, or single
-        self.syllabic = kwargs.get('syllabic', None)
         applyRaw = kwargs.get('applyRaw', False)
 
+        # these are set by setTextAndSyllabic
         if text is not None:
             self.setTextAndSyllabic(text, applyRaw)
+
+        # given as begin, middle, end, or single
+        if 'syllabic' in kwargs:
+            self.syllabic = kwargs['syllabic']
 
         self.number = number
         self.identifier = kwargs.get('identifier', None)
@@ -179,9 +225,78 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         return out
 
     # PUBLIC PROPERTIES #
+    @property
+    def isComposite(self) -> bool:
+        '''
+        Returns True if this Lyric has composite elements,
+        for instance, is multiple lyrics placed together.
+        '''
+        return bool(self.components)
 
     @property
-    def identifier(self):
+    def text(self) -> Optional[str]:
+        '''
+        Gets or sets the text of the lyric.  For composite lyrics, set
+        the text of individual components instead of setting the text here.
+
+        Setting the text of a composite lyric wipes out the components
+        '''
+        if not self.isComposite:
+            return self._text
+        else:
+            text_out = self.components[0].text
+            if text_out is None:
+                text_out = ''
+            for component in self.components[1:]:
+                componentText = component.text if component.text is not None else ''
+                text_out += component.elisionBefore + componentText
+            return text_out
+
+    @text.setter
+    def text(self, newText: Optional[str]):
+        if self.isComposite:
+            self.components = None
+        self._text = newText
+
+    @property
+    def syllabic(self) -> Optional[str]:
+        '''
+        Returns or sets the syllabic property of a lyric.
+
+        >>> fragment = note.Lyric('frag', syllabic='begin')
+        >>> fragment.syllabic
+        'begin'
+        >>> fragment.rawText
+        'frag-'
+        >>> fragment.syllabic = 'end'
+        >>> fragment.rawText
+        '-frag'
+
+        Illegal values raise a LyricException
+
+        >>> fragment.syllabic = 'slide'
+        Traceback (most recent call last):
+        music21.note.LyricException: Syllabic value 'slide' is not in
+            note.SYLLABIC_CHOICES, namely:
+            [None, 'begin', 'single', 'end', 'middle', 'composite']
+        '''
+        if self.isComposite:
+            return 'composite'
+        else:
+            return self._syllabic
+
+
+    @syllabic.setter
+    def syllabic(self, newSyllabic):
+        if newSyllabic not in SYLLABIC_CHOICES:
+            raise LyricException(
+                f'Syllabic value {newSyllabic!r} is not in '
+                + f'note.SYLLABIC_CHOICES, namely: {SYLLABIC_CHOICES}'
+            )
+        self._syllabic = newSyllabic
+
+    @property
+    def identifier(self) -> str:
         '''
         By default, this is the same as self.number. However, if there is a
         descriptive identifier like 'part2verse1', it is stored here and
@@ -197,8 +312,6 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         >>> l.identifier = 'Rainbow'
         >>> l.identifier
         'Rainbow'
-
-        :rtype: str
         '''
         if self._identifier is None:
             return self._number
@@ -206,7 +319,7 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
             return self._identifier
 
     @identifier.setter
-    def identifier(self, value):
+    def identifier(self, value: str):
         self._identifier = value
 
     @property
@@ -220,7 +333,7 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         >>> l.rawText
         'hel-'
 
-        >>> l = note.Lyric('-lo')
+        >>> l = note.Lyric('lo', syllabic='end')
         >>> l.rawText
         '-lo'
 
@@ -231,15 +344,40 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         >>> l = note.Lyric('bye')
         >>> l.rawText
         'bye'
+
+        Composite lyrics take their endings from the first and last components:
+
+        >>> composite = note.Lyric()
+        >>> co = note.Lyric('co', syllabic='end')
+        >>> e = note.Lyric('e', syllabic='single')
+        >>> e.elisionBefore = '_'
+        >>> composite.components = [co, e]
+        >>> composite.rawText
+        '-co_e'
+        >>> e.syllabic = 'middle'
+        >>> composite.rawText
+        '-co_e-'
         '''
-        if self.syllabic == 'begin':
-            return self.text + '-'
-        elif self.syllabic == 'middle':
-            return '-' + self.text + '-'
-        elif self.syllabic == 'end':
-            return '-' + self.text
+        text = self.text
+        if not self.isComposite:
+            syllabic = self.syllabic
+            if syllabic == 'begin':
+                return text + '-'
+            elif syllabic == 'middle':
+                return '-' + text + '-'
+            elif syllabic == 'end':
+                return '-' + text
+            else:
+                return text
         else:
-            return self.text
+            firstSyllabic = self.components[0].syllabic
+            lastSyllabic = self.components[-1].syllabic
+            if firstSyllabic in ['middle', 'end']:
+                text = '-' + text
+            if lastSyllabic in ['begin', 'middle']:
+                text += '-'
+            return text
+
 
     @rawText.setter
     def rawText(self, t):
@@ -272,10 +410,12 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         self._number = value
 
     # PUBLIC METHODS #
-    def setTextAndSyllabic(self, rawText, applyRaw=False):
+    def setTextAndSyllabic(self, rawText: str, applyRaw: bool = False) -> None:
         '''
         Given a setting for rawText and applyRaw,
-        sets the syllabic type for a lyric based on the rawText:
+        sets the syllabic type for a lyric based on the rawText.  Useful for
+        parsing raw text from, say, an OMR score.  Or just to quickly set text
+        and syllabic.
 
         >>> l = note.Lyric()
         >>> l.setTextAndSyllabic('hel-')
@@ -283,10 +423,37 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
         'hel'
         >>> l.syllabic
         'begin'
+        >>> l.setTextAndSyllabic('-lo')
+        >>> l.text
+        'lo'
+        >>> l.syllabic
+        'end'
+        >>> l.setTextAndSyllabic('the')
+        >>> l.text
+        'the'
+        >>> l.syllabic
+        'single'
 
-        :type rawText: str
-        :type applyRaw: bool
-        :rtype: None
+        If applyRaw is True then this will assume you actually want hyphens
+        in the text, and if syllabic is None, sets it to 'single'
+
+        >>> l = note.Lyric()
+        >>> l.setTextAndSyllabic('hel-', applyRaw=True)
+        >>> l.text
+        'hel-'
+        >>> l.syllabic
+        'single'
+
+        If applyRaw is True, other syllabic settings except None are retained
+
+        >>> l.syllabic = 'begin'
+        >>> l.setTextAndSyllabic('-lo', applyRaw=True)
+        >>> l.text
+        '-lo'
+        >>> l.syllabic
+        'begin'
+
+        This method wipes out components.
         '''
         # do not want to do this unless we are sure this is not a string
         # possible might alter unicode or other string-like representations
@@ -305,7 +472,7 @@ class Lyric(prebase.ProtoM21Object, style.StyleMixin):
             self.syllabic = 'middle'
         else:  # assume single
             self.text = rawText
-            if self.syllabic is None or self.syllabic is False:
+            if self.syllabic is None or not applyRaw:
                 self.syllabic = 'single'
 
 
@@ -357,7 +524,7 @@ class GeneralNote(base.Music21Object):
 
     def __init__(self, *arguments, **keywords):
         if 'duration' not in keywords:
-            # music21base does not automatically create a duration.
+            # ensure music21base not automatically create a duration.
             if not keywords:
                 tempDuration = duration.Duration(1.0)
             else:
@@ -373,11 +540,11 @@ class GeneralNote(base.Music21Object):
         # this sets the stored duration defined in Music21Object
         super().__init__(duration=tempDuration)
 
-        self.lyrics = []  # a list of lyric objects
+        self.lyrics: List[Lyric] = []  # a list of lyric objects
         self.expressions = []
         self.articulations = []
 
-        if 'lyric' in keywords:
+        if 'lyric' in keywords and keywords['lyric'] is not None:
             self.addLyric(keywords['lyric'])
 
         # note: Chords handle ties differently
@@ -416,12 +583,16 @@ class GeneralNote(base.Music21Object):
         if not self.lyrics:
             return None
 
-        allText = [l.text for l in self.lyrics]
+        allText = [ly.text for ly in self.lyrics]
         return '\n'.join(allText)
 
-    def _setLyric(self, value: str) -> None:
+    def _setLyric(self, value: Union[str, Lyric, None]) -> None:
         self.lyrics = []
-        if value in (None, False):
+        if value is None:
+            return
+
+        if isinstance(value, Lyric):
+            self.lyrics.append(value)
             return
 
         if not isinstance(value, str):
@@ -464,6 +635,19 @@ class GeneralNote(base.Music21Object):
         [<music21.note.Lyric number=1 syllabic=single text='1. Hi'>,
          <music21.note.Lyric number=2 syllabic=single text='2. Bye'>]
 
+
+        You can also set a lyric with a lyric object directly:
+
+        >>> b = note.Note('B5')
+        >>> ly = note.Lyric('bon-')
+        >>> b.lyric = ly
+        >>> b.lyrics
+        [<music21.note.Lyric number=1 syllabic=begin text='bon'>]
+        >>> b.lyric
+        'bon'
+
+        Changed in v6.7 -- added setting to a Lyric object.  Removed undocumented
+        setting to False instead of setting to None
         ''')
 
     def addLyric(self,
@@ -633,7 +817,7 @@ class GeneralNote(base.Music21Object):
             return None
 
     # --------------------------------------------------------------------------
-    def getGrace(self, *, appogiatura=False, inPlace=False):
+    def getGrace(self, *, appoggiatura=False, inPlace=False):
         '''
         Return a grace version of this GeneralNote
 
@@ -661,11 +845,12 @@ class GeneralNote(base.Music21Object):
         >>> ng.duration.components
         (DurationTuple(type='half', dots=0, quarterLength=0.0),)
 
-        Appogiaturas are still a work in progress...
+        Appoggiaturas are still a work in progress...
+        Changed in v.6 -- corrected spelling of `appoggiatura` keyword.
 
-        >>> ng2 = n.getGrace(appogiatura=True)
+        >>> ng2 = n.getGrace(appoggiatura=True)
         >>> ng2.duration
-        <music21.duration.AppogiaturaDuration unlinked type:zero quarterLength:0.0>
+        <music21.duration.AppoggiaturaDuration unlinked type:zero quarterLength:0.0>
         >>> ng2.duration.slash
         False
 
@@ -682,7 +867,7 @@ class GeneralNote(base.Music21Object):
         else:
             e = self
 
-        e.duration = e.duration.getGraceDuration(appogiatura=appogiatura)
+        e.duration = e.duration.getGraceDuration(appoggiatura=appoggiatura)
 
         if inPlace is False:
             return e
@@ -780,7 +965,7 @@ class NotRest(GeneralNote):
         elif direction == 'none':
             direction = 'noStem'  # allow setting to none or None
         elif direction not in stemDirectionNames:
-            raise NotRestException('not a valid stem direction name: %s' % direction)
+            raise NotRestException(f'not a valid stem direction name: {direction}')
         self._stemDirection = direction
 
     stemDirection = property(_getStemDirection,
@@ -821,19 +1006,9 @@ class NotRest(GeneralNote):
         'unspecified'
         ''')
 
-    def _getNotehead(self) -> str:
-        return self._notehead
-
-    def _setNotehead(self, value):
-        if value in ('none', None, ''):
-            value = None  # allow setting to none or None
-        elif value not in noteheadTypeNames:
-            raise NotRestException('not a valid notehead type name: %s' % repr(value))
-        self._notehead = value
-
-    notehead = property(_getNotehead,
-                        _setNotehead,
-                        doc='''
+    @property
+    def notehead(self) -> str:
+        '''
         Get or set the notehead type of this NotRest object.
         Valid notehead type names are found in note.noteheadTypeNames (see below):
 
@@ -851,25 +1026,20 @@ class NotRest(GeneralNote):
         >>> n.notehead = 'junk'
         Traceback (most recent call last):
         music21.note.NotRestException: not a valid notehead type name: 'junk'
-        ''')
+        '''
+        return self._notehead
 
-    def _getNoteheadFill(self) -> str:
-        return self._noteheadFill
-
-    def _setNoteheadFill(self, value):
-        if value in ('none', None, 'default'):
+    @notehead.setter
+    def notehead(self, value):
+        if value in ('none', None, ''):
             value = None  # allow setting to none or None
-        if value in ('filled', 'yes'):
-            value = True
-        elif value in ('notfilled', 'no'):
-            value = False
-        if value not in (True, False, None):
-            raise NotRestException('not a valid notehead fill value: %s' % value)
-        self._noteheadFill = value
+        elif value not in noteheadTypeNames:
+            raise NotRestException(f'not a valid notehead type name: {value!r}')
+        self._notehead = value
 
-    noteheadFill = property(_getNoteheadFill,
-                            _setNoteheadFill,
-                            doc='''
+    @property
+    def noteheadFill(self) -> str:
+        '''
         Get or set the note head fill status of this NotRest. Valid note head fill values are
         True, False, or None (meaning default).  "yes" and "no" are converted to True
         and False.
@@ -885,23 +1055,24 @@ class NotRest(GeneralNote):
         >>> n.noteheadFill = 'jelly'
         Traceback (most recent call last):
         music21.note.NotRestException: not a valid notehead fill value: jelly
-        ''')
+        '''
+        return self._noteheadFill
 
-    def _getNoteheadParenthesis(self) -> bool:
-        return self._noteheadParenthesis
-
-    def _setNoteheadParenthesis(self, value):
-        if value in (True, 'yes', 1):
+    @noteheadFill.setter
+    def noteheadFill(self, value):
+        if value in ('none', None, 'default'):
+            value = None  # allow setting to none or None
+        if value in ('filled', 'yes'):
             value = True
-        elif value in (False, 'no', 0):
+        elif value in ('notfilled', 'no'):
             value = False
-        else:
-            raise NotRestException('notehead parentheses must be True or False, not %r' % value)
-        self._noteheadParenthesis = value
+        if value not in (True, False, None):
+            raise NotRestException(f'not a valid notehead fill value: {value}')
+        self._noteheadFill = value
 
-    noteheadParenthesis = property(_getNoteheadParenthesis,
-                                   _setNoteheadParenthesis,
-                                   doc='''
+    @property
+    def noteheadParenthesis(self) -> bool:
+        '''
         Get or set the note head parentheses for this Note/Unpitched/Chord object.
 
         >>> n = note.Note()
@@ -922,7 +1093,18 @@ class NotRest(GeneralNote):
         >>> n.noteheadParenthesis = 'blah'
         Traceback (most recent call last):
         music21.note.NotRestException: notehead parentheses must be True or False, not 'blah'
-        ''')
+        '''
+        return self._noteheadParenthesis
+
+    @noteheadParenthesis.setter
+    def noteheadParenthesis(self, value):
+        if value in (True, 'yes', 1):
+            value = True
+        elif value in (False, 'no', 0):
+            value = False
+        else:
+            raise NotRestException(f'notehead parentheses must be True or False, not {value!r}')
+        self._noteheadParenthesis = value
 
     # --------------------------------------------------------------------------
     def hasVolumeInformation(self) -> bool:
@@ -944,7 +1126,21 @@ class NotRest(GeneralNote):
         else:
             return True
 
-    def _getVolume(self, forceClient=None) -> volume.Volume:
+    @property
+    def pitches(self) -> Tuple[pitch.Pitch]:
+        '''
+        Returns an empty tuple.  (Useful for iterating over NotRests since they
+        include Notes and Chords
+        '''
+        return ()
+
+    @pitches.setter
+    def pitches(self, _value: Iterable[pitch.Pitch]):
+        pass
+
+
+    def _getVolume(self, forceClient: Optional[base.Music21Object] = None) -> volume.Volume:
+        # DO NOT CHANGE TO @property because of optional attributes
         # lazy volume creation
         if self._volume is None:
             if forceClient is None:
@@ -955,6 +1151,7 @@ class NotRest(GeneralNote):
         return self._volume
 
     def _setVolume(self, value, setClient=True):
+        # DO NOT CHANGE TO @property because of optional attributes
         # setParent is only False when Chords bundling Notes
         # test by looking for method
         if value is None:
@@ -975,7 +1172,7 @@ class NotRest(GeneralNote):
                 vol.velocity = value
 
         else:
-            raise Exception('this must be a Volume object, not %s' % value)
+            raise Exception(f'this must be a Volume object, not {value}')
 
     volume = property(_getVolume,
                       _setVolume,
@@ -1014,15 +1211,6 @@ class Note(NotRest):
     Further arguments can be specified as keywords (such as type, dots, etc.)
     and are passed to the underlying :class:`music21.duration.Duration` element.
 
-
-    Two notes are considered equal if their most important attributes
-    (such as pitch, duration,
-    articulations, and ornaments) are equal.  Attributes
-    that might change based on the wider context
-    of a note (such as offset)
-    are not compared. This test presently does not look at lyrics in
-    establishing equality.  It may in the future.
-
     >>> n = note.Note()
     >>> n
     <music21.note.Note C>
@@ -1043,6 +1231,24 @@ class Note(NotRest):
     >>> n = note.Note(nameWithOctave='D#5')
     >>> n.nameWithOctave
     'D#5'
+
+    Other ways of instantiating a Pitch object, such as by MIDI number or pitch class
+    are also possible:
+
+    >>> note.Note(64).nameWithOctave
+    'E4'
+
+
+    Two notes are considered equal if their most important attributes
+    (such as pitch, duration,
+    articulations, and ornaments) are equal.  Attributes
+    that might change based on the wider context
+    of a note (such as offset)
+    are not compared. This test does not look at lyrics in
+    establishing equality.  (It may in the future.)
+
+    >>> note.Note('C4') == note.Note('C4')
+    True
     '''
     isNote = True
 
@@ -1060,6 +1266,7 @@ class Note(NotRest):
     # Accepts an argument for pitch
     def __init__(self, pitchName=None, **keywords):
         super().__init__(**keywords)
+        self._chordAttached: Optional['music21.chord.Chord'] = None
 
         if 'pitch' in keywords and pitchName is None:
             pitchName = keywords['pitch']
@@ -1079,6 +1286,9 @@ class Note(NotRest):
                 name = keywords['nameWithOctave']
                 del keywords['nameWithOctave']
             self.pitch = pitch.Pitch(name, **keywords)
+
+        # noinspection PyProtectedMember
+        self.pitch._client = self
 
     # --------------------------------------------------------------------------
     # operators, representations, and transformations
@@ -1111,14 +1321,11 @@ class Note(NotRest):
         if other is None or not isinstance(other, Note):
             return NotImplemented
 
-        retVal = super().__eq__(other)
-        if retVal is not True:
-            return retVal
-
         # checks pitch.octave, pitch.accidental, uses Pitch.__eq__
         if self.pitch != other.pitch:
             return False
-        return True
+
+        return super().__eq__(other)
 
     def __lt__(self, other):
         '''
@@ -1139,10 +1346,9 @@ class Note(NotRest):
 
         Notice you cannot compare Notes w/ ints or anything not pitched.
 
-        ::
-            `highE < 50`
-            Traceback (most recent call last):
-            TypeError: '<' not supported between instances of 'Note' and 'int'
+        >>> highE < 50
+        Traceback (most recent call last):
+        TypeError: '<' not supported between instances of 'Note' and 'int'
 
         Note also that two objects can be >= and <= without being equal, because
         only pitch-height is being compared in <, <=, >, >= but duration and other
@@ -1155,13 +1361,6 @@ class Note(NotRest):
         True
         >>> highE == otherHighE
         False
-
-
-        OMIT_FROM_DOCS
-
-        The `highE < 50` test fails on Python 3.5, because of a change to the
-        TypeError output list.  When m21 becomes Python 3.6 > only, then
-        we can add the test back in.
         '''
         try:
             return self.pitch < other.pitch
@@ -1243,18 +1442,9 @@ class Note(NotRest):
         See :attr:`~music21.pitch.Pitch.octave`.
         ''')
 
-    def _getPitches(self):
-        return (self.pitch,)
-
-    def _setPitches(self, value):
-        if common.isListLike(value):
-            self.pitch = value[0]
-        else:
-            raise NoteException('cannot set pitches with provided object: %s' % value)
-
-    pitches = property(_getPitches,
-                       _setPitches,
-                       doc='''
+    @property
+    def pitches(self) -> Tuple[pitch.Pitch]:
+        '''
         Return the :class:`~music21.pitch.Pitch` object in a tuple.
         This property is designed to provide an interface analogous to
         that found on :class:`~music21.chord.Chord` so that `[c.pitches for c in s.notes]`
@@ -1291,7 +1481,15 @@ class Note(NotRest):
         >>> n.pitch.diatonicNoteNum
         Traceback (most recent call last):
         AttributeError: 'str' object has no attribute 'diatonicNoteNum'
-        ''')
+        '''
+        return (self.pitch,)
+
+    @pitches.setter
+    def pitches(self, value: Iterable[pitch.Pitch]):
+        if common.isListLike(value) and value:
+            self.pitch = value[0]
+        else:
+            raise NoteException(f'cannot set pitches with provided object: {value}')
 
     def transpose(self, value, *, inPlace=False):
         '''
@@ -1389,10 +1587,18 @@ class Note(NotRest):
         'D (+25c) 16th Note'
         '''
         msg = []
-        msg.append('%s ' % self.pitch.fullName)
+        msg.append(self.pitch.fullName + ' ')
         msg.append(self.duration.fullName)
         msg.append(' Note')
         return ''.join(msg)
+
+    def pitchChanged(self):
+        '''
+        Called by the underlying pitch if something changed there.
+        '''
+        self._cache = {}
+        if self._chordAttached is not None:
+            self._chordAttached.clearCache()
 
 
 # ------------------------------------------------------------------------------
@@ -1514,7 +1720,7 @@ class Rest(GeneralNote):
                 # TODO: get it to work.
 
                 "auto" is the default, where if the rest value happens to match the current
-                time signature context, then display it as a whole note, centered, etc.
+                time signature context, then display it as a whole rest, centered, etc.
                 otherwise will display normally.
 
                 See examples in :meth:`music21.musicxml.m21ToXml.MeasureExporter.restToXml`
@@ -1574,7 +1780,7 @@ class SpacerRest(Rest):
     This is exactly the same as a rest, but it is a SpacerRest.
     This object should only be used for making hidden space in a score in lilypond.
 
-    This may become deprecated at some point...
+    DEPRECATED in v.7 -- use a normal rest with .hideObjectOnPrint
 
     >>> sr = note.SpacerRest(type='whole')
     >>> sr
@@ -1596,9 +1802,6 @@ class TestExternal(unittest.TestCase):  # pragma: no cover
     These are tests that open windows and rely on external software
     '''
 
-    def runTest(self):
-        pass
-
     def testSingle(self):
         '''Need to test direct meter creation w/o stream
         '''
@@ -1613,7 +1816,7 @@ class TestExternal(unittest.TestCase):  # pragma: no cover
         for pitchName, qLen in [('d-3', 2.5), ('c#6', 3.25), ('a--5', 0.5),
                                 ('f', 1.75), ('g3', 1.5), ('d##4', 1.25),
                                 ('d-3', 2.5), ('c#6', 3.25), ('a--5', 0.5),
-                                ('f#2', 1.75), ('g-3', 1.33333), ('d#6', 0.6666)
+                                ('f#2', 1.75), ('g-3', (4 / 3)), ('d#6', (2 / 3))
                                 ]:
             b = Note()
             b.quarterLength = qLen
@@ -1626,9 +1829,6 @@ class TestExternal(unittest.TestCase):  # pragma: no cover
 
 # ------------------------------------------------------------------------------
 class Test(unittest.TestCase):
-
-    def runTest(self):
-        pass
 
     def testCopyAndDeepcopy(self):
         '''
@@ -1644,6 +1844,7 @@ class Test(unittest.TestCase):
             if match:
                 continue
             name = getattr(sys.modules[self.__module__], part)
+            # noinspection PyTypeChecker
             if callable(name) and not isinstance(name, types.FunctionType):
                 try:  # see if obj can be made w/ args
                     obj = name()

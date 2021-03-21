@@ -14,6 +14,7 @@ import re
 from collections import OrderedDict
 # these single-entity tags are bundled together.
 from music21 import articulations
+from music21 import exceptions21
 from music21 import expressions
 
 DYNAMIC_MARKS = ['p', 'pp', 'ppp', 'pppp', 'ppppp', 'pppppp',
@@ -63,13 +64,13 @@ TECHNICAL_MARKS = OrderedDict([('up-bow', articulations.UpBow),
                                ('triple-tongue', articulations.TripleTongue),
                                ('stopped', articulations.Stopped),
                                ('snap-pizzicato', articulations.SnapPizzicato),
-                               ('fret', articulations.FretIndication),
                                ('string', articulations.StringIndication),
                                ('hammer-on', articulations.HammerOn),
                                ('pull-off', articulations.PullOff),
                                # bend not implemented because it needs many sub components
                                # ('bend', articulations.FretBend),
                                ('tap', articulations.FretTap),
+                               ('fret', articulations.FretIndication),
                                ('heel', articulations.OrganHeel),
                                ('toe', articulations.OrganToe),
                                ('fingernails', articulations.HarpFingerNails),
@@ -81,6 +82,7 @@ TECHNICAL_MARKS = OrderedDict([('up-bow', articulations.UpBow),
 TECHNICAL_MARKS_REV = OrderedDict([(v, k) for k, v in TECHNICAL_MARKS.items()])
 # too generic until we have an ordered dict. -- we have that now.  Should we not do it?
 del TECHNICAL_MARKS_REV[articulations.TechnicalIndication]
+TECHNICAL_MARKS_REV[articulations.Harmonic] = 'harmonic'
 
 
 # NON-spanner ornaments that go into Expressions
@@ -99,8 +101,30 @@ ORNAMENT_MARKS = {'trill-mark': expressions.Trill,
                   }
 
 # ------------------------------------------------------------------------------
-# helpers
 
+class MusicXMLException(exceptions21.Music21Exception):
+    def __init__(self, message):
+        super().__init__(message)
+        self.measureNumber: str = ''
+        self.partName: str = ''
+
+    def __str__(self):
+        msg = super().__str__()
+        if self.measureNumber or self.partName:
+            msg = f'In part ({self.partName}), measure ({self.measureNumber}): ' + msg
+        return msg
+
+
+class MusicXMLExportException(MusicXMLException):
+    pass
+
+
+class MusicXMLImportException(MusicXMLException):
+    pass
+
+
+# ------------------------------------------------------------------------------
+# helpers
 STYLE_ATTRIBUTES_YES_NO_TO_BOOL = ('hideObjectOnPrint', )
 STYLE_ATTRIBUTES_STR_NONE_TO_NONE = ('enclosure', )
 

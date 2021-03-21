@@ -6,23 +6,28 @@
 # Authors:      Michael Scott Cuthbert
 #               Christopher Ariza
 #
-# Copyright:    Copyright © 2009-2015 Michael Scott Cuthbert and the music21 Project
+# Copyright:    Copyright © 2009-2020 Michael Scott Cuthbert and the music21 Project
 # License:      BSD, see license.txt
 # ------------------------------------------------------------------------------
 '''
 If it doesn't fit anywhere else in the common directory, you'll find it here...
 '''
+from typing import Tuple, List, Iterable, Optional, Callable
+import platform
 import re
 
-__all__ = ['flattenList',
-           'getMissingImportStr',
-           'getPlatform',
-           'sortModules',
-           'pitchList',
-           'runningUnderIPython',
-           'defaultDeepcopy',
-           'cleanedFlatNotation'
-           ]
+__all__ = [
+    'flattenList',
+    'getMissingImportStr',
+    'getPlatform',
+    'macOSVersion',
+    'sortModules',
+    'pitchList',
+    'unique',
+    'runningUnderIPython',
+    'defaultDeepcopy',
+    'cleanedFlatNotation',
+]
 
 import copy
 import os
@@ -33,7 +38,7 @@ import time
 # -----------------------------------------------------------------------------
 
 
-def flattenList(l):
+def flattenList(originalList: List) -> List:
     '''
     Flatten a list of lists into a flat list
 
@@ -43,7 +48,46 @@ def flattenList(l):
     >>> common.flattenList(l)
     [1, 2, 3, 4, 5, 6]
     '''
-    return [item for sublist in l for item in sublist]
+    return [item for sublist in originalList for item in sublist]
+
+
+def unique(originalList: Iterable, *, key: Optional[Callable] = None) -> List:
+    '''
+    Return a List of unique items from an iterable, preserving order.
+    (unlike casting to a set and back)
+
+    (And why is this not already in Python?)
+
+    >>> common.misc.unique([3, 2, 4, 3, 2, 5])
+    [3, 2, 4, 5]
+
+    Works on any iterable, but order might not be preserved for sets, etc.
+
+    >>> common.misc.unique(range(5))
+    [0, 1, 2, 3, 4]
+
+    If key is a function then use that to get the value:
+
+    >>> s = converter.parse('tinyNotation: c4 E d C f# e a')
+    >>> common.misc.unique(s.recurse().notes, key=lambda n: n.name)
+     [<music21.note.Note C>,
+      <music21.note.Note E>,
+      <music21.note.Note D>,
+      <music21.note.Note F#>,
+      <music21.note.Note A>]
+    '''
+    seen = set()
+    out = []
+    for el in originalList:
+        if key:
+            elKey = key(el)
+        else:
+            elKey = el
+        if elKey in seen:
+            continue
+        seen.add(elKey)
+        out.append(el)
+    return out
 
 # ------------------------------------------------------------------------------
 # provide warning strings to users for use in conditional imports
@@ -68,15 +112,16 @@ def getMissingImportStr(modNameList):
     if not modNameList:
         return None
     elif len(modNameList) == 1:
-        return textwrap.dedent('''Certain music21 functions might need the optional package %s;
+        m = modNameList[0]
+        return textwrap.dedent(f'''Certain music21 functions might need the optional package {m};
                   if you run into errors, install it by following the instructions at
-                  http://mit.edu/music21/doc/installing/installAdditional.html''' %
-                               modNameList[0])
+                  http://mit.edu/music21/doc/installing/installAdditional.html''')
     else:
-        return textwrap.dedent('''Certain music21 functions might need these optional packages: %s;
+        m = ', '.join(modNameList)
+        return textwrap.dedent(
+            f'''Certain music21 functions might need these optional packages: {m};
                    if you run into errors, install them by following the instructions at
-                   http://mit.edu/music21/doc/installing/installAdditional.html''' %
-                               ', '.join(modNameList))
+                   http://mit.edu/music21/doc/installing/installAdditional.html''')
 
 
 def getPlatform() -> str:
@@ -84,26 +129,48 @@ def getPlatform() -> str:
     Return the name of the platform, where platforms are divided
     between 'win' (for Windows), 'darwin' (for MacOS X), and 'nix' for
     (GNU/Linux and other variants).
+
+    Does not discern between Linux/FreeBSD, etc.
+
+    Lowercase names are for backwards compatibility -- this existed before
+    the platform module.
     '''
     # possible os.name values: 'posix', 'nt', 'os2', 'ce', 'java'.
-    if os.name == 'nt' or sys.platform.startswith('win'):
+    if platform.system() == 'Windows':
         return 'win'
-    elif sys.platform == 'darwin':
+    elif platform.system() == 'Darwin':
         return 'darwin'
     elif os.name == 'posix':  # catch all other nix platforms
         return 'nix'  # this must be after the Mac Darwin check, b/c Darwin is also posix
     else:
         return os.name
 
+def macOSVersion() -> Tuple[int, int, int]:  # pragma: no cover
+    '''
+    On a Mac returns the current version as a tuple of (currently 3) ints,
+    such as: (10, 5, 6) for 10.5.6.
 
-def sortModules(moduleList):
+    On other systems, returns (0, 0, 0)
+    '''
+    if getPlatform() != 'darwin':
+        return (0, 0, 0)
+
+    # Catch minor and maintenance as they could be missing,
+    # e.g., macOS Big Sur 11.0.1 (20B28) corresponds to "10.16".
+    major, *minor_and_maintenance = tuple(int(v) for v in platform.mac_ver()[0].split('.'))
+
+    minor = minor_and_maintenance[0] if minor_and_maintenance else 0
+    maintenance = minor_and_maintenance[1] if len(minor_and_maintenance) > 1 else 0
+
+    return (major, minor, maintenance)
+
+
+def sortModules(moduleList) -> List[str]:
     '''
     Sort a lost of imported module names such that most recently modified is
     first.  In ties, last access time is used then module name
 
     Will return a different order each time depending on the last mod time
-
-    :rtype: list(str)
     '''
     sort = []
     modNameToMod = {}
@@ -130,7 +197,7 @@ def pitchList(pitchL):
     return '[' + ', '.join([x.nameWithOctave for x in pitchL]) + ']'
 
 
-def runningUnderIPython():
+def runningUnderIPython() -> bool:
     '''
     return bool if we are running under iPython Notebook (not iPython)
 
@@ -144,7 +211,7 @@ def runningUnderIPython():
     says not to do this, but really, I can't think of another way
     to have different output as default.
 
-    :rtype: bool
+    Returns True also for Google Colab
     '''
     if sys.stderr.__class__.__name__ == 'OutStream':
         return True
@@ -206,12 +273,15 @@ def defaultDeepcopy(obj, memo, callInit=True):
     return new
 
 
-def cleanedFlatNotation(music_str):
+def cleanedFlatNotation(music_str: str) -> str:
     '''
     Returns a copy of the given string where each occurrence of a flat note
     specified with a 'b' is replaced by a '-'.
-    :param music_str: a string containing a note specified (for example in a chord)
-    :return: a new string with flats only specified with '-'.
+
+    music_str is a string containing a note specified (for example in a chord)
+
+    Returns a new string with flats only specified with '-'.
+
     >>> common.cleanedFlatNotation('Cb')
     'C-'
     '''

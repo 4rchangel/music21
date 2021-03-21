@@ -392,7 +392,7 @@ class CapellaImporter:
             el = None
             t = d.tag
             if t not in mapping:
-                print('Unknown tag type: %s' % t)
+                print(f'Unknown tag type: {t}')
             else:
                 el = mapping[t](d)
                 if isinstance(el, list):  # barlineList returns a list
@@ -547,14 +547,14 @@ class CapellaImporter:
         >>> ci = capella.fromCapellaXML.CapellaImporter()
         >>> alter = ci.domElementFromText('<alter step="-1"/>')
         >>> ci.accidentalFromAlter(alter)
-        <accidental flat>
+        <music21.pitch.Accidental flat>
 
         The only known display type is "suppress"
 
         >>> alter = ci.domElementFromText('<alter step="2" display="suppress"/>')
         >>> acc = ci.accidentalFromAlter(alter)
         >>> acc
-        <accidental double-sharp>
+        <music21.pitch.Accidental double-sharp>
         >>> acc.displayType
         'never'
         '''

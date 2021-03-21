@@ -16,14 +16,17 @@ Each subconverter should inherit from the base SubConverter object and have at l
 parseData method that sets self.stream.
 '''
 # ------------------------------------------------------------------------------
-# Converters are associated classes; they are not subclasses, but most define a pareData() method,
+# Converters are associated classes; they are not subclasses, but most define a parseData() method,
 # a parseFile() method, and a .stream attribute or property.
 import base64
 import io
 import os
 import pathlib
+import subprocess
 import sys
 import unittest
+
+from typing import Union
 
 from music21 import common
 from music21 import defaults
@@ -102,10 +105,10 @@ class SubConverter:
         to do implement this method.  Just set self.readBinary to True|False.
         '''
         if self.readBinary is False:
-            with open(str(filePath)) as f:  # remove str in Py3.6
+            with open(filePath) as f:
                 dataStream = f.read()
         else:
-            with open(str(filePath), 'rb') as f:  # remove str in Py3.6
+            with open(filePath, 'rb') as f:
                 dataStream = f.read()
 
         # might raise NotImplementedError
@@ -160,28 +163,37 @@ class SubConverter:
                 app = environLocal.formatToApp(fmt)
 
         platform = common.getPlatform()
+        shell: bool = False
         if app is None:
             if platform == 'win':
                 # no need to specify application here:
                 # windows starts the program based on the file extension
-                cmd = 'start %s' % (filePath)
+                cmd = ('start', str(filePath))
+                shell = True
             elif platform == 'darwin':
-                cmd = 'open %s %s' % (options, filePath)
+                if options:
+                    cmd = ('open', options, str(filePath))
+                else:
+                    cmd = ('open', str(filePath))
             else:
                 raise SubConverterException(
-                    'Cannot find a valid application path for format {}. '
-                    'Specify this in your Environment by calling '
-                    "environment.set({!r}, '/path/to/application')".format(
-                        fmt, launchKey))
-        elif platform == 'win':  # note extra set of quotes!
-            cmd = '""%s" %s "%s""' % (app, options, filePath)
+                    f'Cannot find a valid application path for format {fmt}. '
+                    + 'Specify this in your Environment by calling '
+                    + f"environment.set({launchKey!r}, '/path/to/application')"
+                )
+        elif platform in ('win', 'nix'):
+            if options:
+                cmd = (app, options, str(filePath))
+            else:
+                cmd = (app, str(filePath))
         elif platform == 'darwin':
-            cmd = 'open -a"%s" %s %s' % (app, options, filePath)
-        elif platform == 'nix':
-            cmd = '%s %s %s' % (app, options, filePath)
+            if options:
+                cmd = ('open', '-a', str(app), options, str(filePath))
+            else:
+                cmd = ('open', '-a', str(app), str(filePath))
         else:
-            return
-        os.system(cmd)
+            raise SubConverterException(f'Cannot launch files on {platform}')
+        subprocess.run(cmd, check=False, shell=shell)
 
     def show(self, obj, fmt, app=None, subformats=None, **keywords):
         '''
@@ -198,9 +210,9 @@ class SubConverter:
         '''
         Given a default format or subformats, give the file extension it should have:
 
-        >>> c = converter.subConverters.ConverterLilypond()
-
-        This is currently basically completely unused!
+        >>> c = converter.subConverters.ConverterMidi()
+        >>> c.getExtensionForSubformats()
+        '.mid'
         '''
         extensions = self.registerOutputExtensions
         if not extensions:
@@ -215,18 +227,20 @@ class SubConverter:
                 ext = self.registerOutputSubformatExtensions[joinedSubformats]
         return '.' + ext
 
-    def getTemporaryFile(self, subformats=None):
+    def getTemporaryFile(self, subformats=None) -> pathlib.Path:
         '''
-        This is never called with subformats and should probably be deleted!
+        Return a temporary file with an extension appropriate for the format.
 
         >>> c = corpus.parse('bwv66.6')
         >>> lpConverter = converter.subConverters.ConverterLilypond()
-        >>> tf = lpConverter.getTemporaryFile(subformats=['png'])
+        >>> tf = str(lpConverter.getTemporaryFile(subformats=['png']))
         >>> tf.endswith('.png')
         True
+
+        Changed in v.6 -- returns pathlib.Path
         '''
         ext = self.getExtensionForSubformats(subformats)
-        fp = environLocal.getTempFile(ext)
+        fp = environLocal.getTempFile(ext, returnPathlib=True)
         return fp
 
     def write(self, obj, fmt, fp=None, subformats=None, **keywords):  # pragma: no cover
@@ -271,7 +285,7 @@ class SubConverter:
                 f.close()
 
             except TypeError as te:
-                raise SubConverterException('Could not convert %r : %r' % (dataStr, te))
+                raise SubConverterException(f'Could not convert {dataStr!r} : {te!r}')
         else:
             if hasattr(fp, 'write'):
                 # is a file-like object
@@ -344,6 +358,7 @@ class ConverterIPython(SubConverter):
         helperConverter.setSubconverterFromFormat(helperFormat)
         helperSubConverter = helperConverter.subConverter
 
+        # noinspection PyPackageRequirements
         from IPython.display import Image, display, HTML  # @UnresolvedImport
 
         if helperFormat in ('musicxml', 'xml', 'lilypond', 'lily'):
@@ -361,8 +376,11 @@ class ConverterIPython(SubConverter):
                 scores = list(obj.scores)
 
             for s in scores:
-                fp = helperSubConverter.write(s, helperFormat,
-                                              subformats=helperSubformats, **keywords)
+                fp = helperSubConverter.write(s,
+                                              helperFormat,
+                                              subformats=helperSubformats,
+                                              **keywords
+                                              )
 
                 if helperSubformats[0] == 'png':
                     if not str(environLocal['musescoreDirectPNGPath']).startswith('/skip'):
@@ -383,7 +401,13 @@ class ConverterIPython(SubConverter):
             return None
 
         elif helperFormat == 'midi':
-            fp = helperSubConverter.write(obj, helperFormat, subformats=helperSubformats)
+            assert isinstance(helperSubConverter, ConverterMidi)
+            fp = helperSubConverter.write(
+                obj,
+                helperFormat,
+                subformats=helperSubformats,
+                addStartDelay=True,
+            )
             with open(fp, 'rb') as f:
                 binaryMidiData = f.read()
 
@@ -522,7 +546,7 @@ class ConverterText(SubConverter):
         self.writeDataStream(fp, dataStr)
         return fp
 
-    def show(self, obj, *args, **keywords):
+    def show(self, obj, fmt, app=None, subformats=None, **keywords):
         print(obj._reprText(**keywords))
 
 
@@ -543,7 +567,7 @@ class ConverterTextLine(SubConverter):
         self.writeDataStream(fp, dataStr)
         return fp
 
-    def show(self, obj, *args, **keywords):
+    def show(self, obj, fmt, app=None, subformats=None, **keywords):
         return obj._reprTextLine()
 
 
@@ -575,7 +599,7 @@ class ConverterVolpiano(SubConverter):
         breaksToLayout = keywords.get('breaksToLayout', False)
         self.stream = volpiano.toPart(dataString, breaksToLayout=breaksToLayout)
 
-    def getDataStr(self, obj, *args, **keywords):
+    def getDataStr(self, obj, **keywords):
         '''
         Get the raw data, for storing as a variable.
         '''
@@ -593,8 +617,8 @@ class ConverterVolpiano(SubConverter):
         self.writeDataStream(fp, dataStr)
         return fp
 
-    def show(self, obj, *args, **keywords):
-        print(self.getDataStr(obj, *args, **keywords))
+    def show(self, obj, fmt, app=None, subformats=None, **keywords):
+        print(self.getDataStr(obj, **keywords))
 
 
 class ConverterScala(SubConverter):
@@ -618,7 +642,9 @@ class ConverterHumdrum(SubConverter):
     # --------------------------------------------------------------------------
 
     def parseData(self, humdrumString, number=None):
-        '''Open Humdrum data from a string -- calls humdrum.parseData()
+        '''
+        Open Humdrum data from a string -- calls
+        :meth:`~music21.humdrum.spineParser.HumdrumDataCollection.parse()`.
 
         >>> humData = ('**kern\\n*M2/4\\n=1\\n24r\\n24g#\\n24f#\\n24e\\n24c#\\n' +
         ...     '24f\\n24r\\n24dn\\n24e-\\n24gn\\n24e-\\n24dn\\n*-')
@@ -627,7 +653,7 @@ class ConverterHumdrum(SubConverter):
         >>> c.stream.show('text')
         {0.0} <music21.metadata.Metadata object at 0x7f33545027b8>
         {0.0} <music21.stream.Part spine_0>
-            {0.0} <music21.humdrum.spineParser.MiscTandem **kern humdrum control>
+            {0.0} <music21.humdrum.spineParser.MiscTandem **kern>
             {0.0} <music21.stream.Measure 1 offset=0.0>
                 {0.0} <music21.meter.TimeSignature 2/4>
                 {0.0} <music21.note.Rest rest>
@@ -643,10 +669,11 @@ class ConverterHumdrum(SubConverter):
                 {1.6667} <music21.note.Note E->
                 {1.8333} <music21.note.Note D>
         '''
-        from music21 import humdrum
-        self.data = humdrum.parseData(humdrumString)
-        # self.data.stream.makeNotation()
+        from music21.humdrum.spineParser import HumdrumDataCollection
 
+        hdf = HumdrumDataCollection(humdrumString)
+        hdf.parse()
+        self.data = hdf
         self.stream = self.data.stream
         return self.data
 
@@ -658,8 +685,10 @@ class ConverterHumdrum(SubConverter):
 
         Number is ignored here.
         '''
-        from music21 import humdrum
-        self.data = humdrum.parseFile(filepath)
+        from music21.humdrum.spineParser import HumdrumFile
+        hf = HumdrumFile(filepath)
+        hf.parseFilename()
+        self.data = hf
         # self.data.stream.makeNotation()
 
         self.stream = self.data.stream
@@ -684,6 +713,7 @@ class ConverterTinyNotation(SubConverter):
 
     # --------------------------------------------------------------------------
     def parseData(self, tnData, number=None):
+        # noinspection PyShadowingNames
         '''
         Open TinyNotation data from a string
 
@@ -723,7 +753,7 @@ class ConverterNoteworthy(SubConverter):
 
     Gets data with the file format .nwctxt
 
-    Users should not need this routine.  The basic format is converter.parse("file.nwctxt")
+    Users should not need this routine.  The basic format is converter.parse('file.nwctxt')
 
 
     >>> nwcTranslatePath = common.getSourceFilePath() / 'noteworthy' #_DOCS_HIDE
@@ -741,6 +771,7 @@ class ConverterNoteworthy(SubConverter):
 
     # --------------------------------------------------------------------------
     def parseData(self, nwcData):
+        # noinspection PyShadowingNames
         r'''Open Noteworthy data from a string or list
 
         >>> nwcData = ('!NoteWorthyComposer(2.0)\n|AddStaff\n|Clef|' +
@@ -811,25 +842,25 @@ class ConverterMusicXML(SubConverter):
                                          }
 
     # --------------------------------------------------------------------------
-    def findPNGfpFromXMLfp(self, xmlFilePath):
+    def findPNGfpFromXMLfp(self, xmlFilePath: Union[str, pathlib.Path]) -> str:
         '''
         Check whether total number of pngs is in 1-9, 10-99, or 100-999 range,
-         then return appropriate fp. Raises and exception if png fp does not exist.
+        then return appropriate fp. Raises and exception if png fp does not exist.
         '''
         xmlFilePath = str(xmlFilePath)  # not pathlib.
+        path_without_extension = xmlFilePath[:-4]
 
-        if os.path.exists(xmlFilePath[0:len(xmlFilePath) - 4] + '-1.png'):
-            pngFp = xmlFilePath[0:len(xmlFilePath) - 4] + '-1.png'
-        elif os.path.exists(xmlFilePath[0:len(xmlFilePath) - 4] + '-01.png'):
-            pngFp = xmlFilePath[0:len(xmlFilePath) - 4] + '-01.png'
-        elif os.path.exists(xmlFilePath[0:len(xmlFilePath) - 4] + '-001.png'):
-            pngFp = xmlFilePath[0:len(xmlFilePath) - 4] + '-001.png'
-        else:
-            raise SubConverterFileIOException(
-                'png file of xml not found. Or file >999 pages?')
-        return pngFp
+        for search_extension in ('1', '01', '001', '0001', '00001'):
+            search_path = path_without_extension + '-' + search_extension + '.png'
+            if os.path.exists(search_path):
+                return search_path
 
-    def parseData(self, xmlString, number=None):
+        raise SubConverterFileIOException(
+            f'No png file for {xmlFilePath} (such as {path_without_extension}-1.png) was found.  '
+            + 'The conversion to png failed'
+        )
+
+    def parseData(self, xmlString: str, number=None):
         '''
         Open MusicXML data from a string.
         '''
@@ -840,7 +871,7 @@ class ConverterMusicXML(SubConverter):
         c.parseXMLText()
         self.stream = c.stream
 
-    def parseFile(self, fp, number=None):
+    def parseFile(self, fp: Union[str, pathlib.Path], number=None):
         '''
         Open from a file path; check to see if there is a pickled
         version available and up to date; if so, open that, otherwise
@@ -853,9 +884,6 @@ class ConverterMusicXML(SubConverter):
         from music21.musicxml import xmlToM21
 
         c = xmlToM21.MusicXMLImporter()
-
-        if isinstance(fp, pathlib.Path):
-            fp = str(fp)  # remove in Py3.6
 
         # here, we can see if this is a mxl or similar archive
         arch = converter.ArchiveManager(fp)
@@ -878,9 +906,6 @@ class ConverterMusicXML(SubConverter):
         Take the output of the conversion process and run it through musescore to convert it
         to a png.
         '''
-        if isinstance(fp, pathlib.Path):
-            fp = str(fp)
-
         musescorePath = environLocal['musescoreDirectPNGPath']
         if not musescorePath:
             raise SubConverterException(
@@ -896,24 +921,20 @@ class ConverterMusicXML(SubConverter):
         else:
             subformatExtension = subformats[0]
 
-        fpOut = fp[0:len(fp) - 3]
+        fpOut = str(fp)[:-3]
         fpOut += subformatExtension
 
-        musescoreRun = '"' + str(musescorePath) + '" "' + fp + '" -o "' + fpOut + '" -T 0 '
+        musescoreRun = [str(musescorePath), fp, '-o', fpOut, '-T', '0']
         if 'dpi' in keywords:
-            musescoreRun += ' -r ' + str(keywords['dpi'])
+            musescoreRun.extend(['-r', str(keywords['dpi'])])
 
         if common.runningUnderIPython():
-            musescoreRun += ' -r ' + str(defaults.ipythonImageDpi)
-
-        platform = common.getPlatform()
-        if platform == 'win':
-            musescoreRun = '"' + musescoreRun + '"'
+            musescoreRun.extend(['-r', str(defaults.ipythonImageDpi)])
 
         storedStrErr = sys.stderr
         fileLikeOpen = io.StringIO()
         sys.stderr = fileLikeOpen
-        os.system(musescoreRun)
+        subprocess.run(musescoreRun, check=False)
         fileLikeOpen.close()
         sys.stderr = storedStrErr
 
@@ -923,7 +944,7 @@ class ConverterMusicXML(SubConverter):
             return fpOut
         # common.cropImageFromPath(fp)
 
-    def writeDataStream(self, fp, dataBytes):  # pragma: no cover
+    def writeDataStream(self, fp, dataBytes: bytes):  # pragma: no cover
         if fp is None:
             fp = self.getTemporaryFile()
         else:
@@ -932,12 +953,18 @@ class ConverterMusicXML(SubConverter):
         writeFlags = 'wb'
 
         with open(fp, writeFlags) as f:
+            f: io.BytesIO
             f.write(dataBytes)
 
         return fp
 
-    def write(self, obj, fmt, fp=None, subformats=None, **keywords):  # pragma: no cover
-        from music21.musicxml import m21ToXml
+    def write(self, obj, fmt, fp=None, subformats=None,
+              compress=False, **keywords):  # pragma: no cover
+        '''
+        Write to a .xml file.
+        Set `compress=True` to immediately compress the output to a .mxl file.
+        '''
+        from music21.musicxml import archiveTools, m21ToXml
 
         savedDefaultTitle = defaults.title
         savedDefaultAuthor = defaults.author
@@ -949,8 +976,15 @@ class ConverterMusicXML(SubConverter):
             defaults.author = ''
 
         generalExporter = m21ToXml.GeneralObjectExporter(obj)
-        dataBytes = generalExporter.parse()
-        fp = self.writeDataStream(fp, dataBytes)
+        dataBytes: bytes = generalExporter.parse()
+
+        writeDataStreamFp = fp
+        if fp is not None and subformats is not None:
+            fpStr = str(fp)
+            noExtFpStr = os.path.splitext(fpStr)[0]
+            writeDataStreamFp = noExtFpStr + '.xml'
+
+        xmlFp = self.writeDataStream(writeDataStreamFp, dataBytes)
 
         if subformats is not None and 'png' in subformats:
             defaults.title = savedDefaultTitle
@@ -959,9 +993,15 @@ class ConverterMusicXML(SubConverter):
         if (subformats is not None
                 and ('png' in subformats or 'pdf' in subformats)
                 and not str(environLocal['musescoreDirectPNGPath']).startswith('/skip')):
-            fp = self.runThroughMusescore(fp, subformats, **keywords)
+            outFp = self.runThroughMusescore(xmlFp, subformats, **keywords)
+        elif compress:
+            archiveTools.compressXML(xmlFp, deleteOriginal=True, silent=True)
+            filenameOut = os.path.splitext(str(xmlFp))[0] + '.mxl'
+            outFp = common.pathTools.cleanpath(filenameOut, returnPathlib=True)
+        else:
+            outFp = xmlFp
 
-        return fp
+        return outFp
 
     def show(self, obj, fmt, app=None, subformats=None, **keywords):  # pragma: no cover
         '''
@@ -991,15 +1031,25 @@ class ConverterMidi(SubConverter):
         Get MIDI data from a binary string representation.
 
         Calls midi.translate.midiStringToStream.
+
+        Keywords to control quantization:
+        `quantizePost` controls whether to quantize the output. (Default: True)
+        `quarterLengthDivisors` allows for overriding the default quantization units
+        in defaults.quantizationQuarterLengthDivisors. (Default: (4, 3)).
         '''
         from music21.midi import translate as midiTranslate
-        self.stream = midiTranslate.midiStringToStream(strData)
+        self.stream = midiTranslate.midiStringToStream(strData, **self.keywords)
 
     def parseFile(self, fp, number=None, **keywords):
         '''
         Get MIDI data from a file path.
 
         Calls midi.translate.midiFilePathToStream.
+
+        Keywords to control quantization:
+        `quantizePost` controls whether to quantize the output. (Default: True)
+        `quarterLengthDivisors` allows for overriding the default quantization units
+        in defaults.quantizationQuarterLengthDivisors. (Default: (4, 3)).
         '''
         from music21.midi import translate as midiTranslate
         midiTranslate.midiFilePathToStream(fp, self.stream, **keywords)
@@ -1008,7 +1058,12 @@ class ConverterMidi(SubConverter):
         from music21.midi import translate as midiTranslate
         if fp is None:
             fp = self.getTemporaryFile()
-        mf = midiTranslate.music21ObjectToMidiFile(obj)
+
+        midiTranslateKeywords = {}
+        if 'addStartDelay' in keywords:
+            midiTranslateKeywords['addStartDelay'] = keywords['addStartDelay']
+
+        mf = midiTranslate.music21ObjectToMidiFile(obj, **midiTranslateKeywords)
         mf.open(fp, 'wb')  # write binary
         mf.write()
         mf.close()
@@ -1079,6 +1134,7 @@ class ConverterRomanText(SubConverter):
     '''
     registerFormats = ('romantext', 'rntext')
     registerInputExtensions = ('rntxt', 'rntext', 'romantext', 'rtxt')
+    registerOutputExtensions = ('rntxt',)
 
     def parseData(self, strData, number=None):
         from music21.romanText import rtObjects
@@ -1100,6 +1156,21 @@ class ConverterRomanText(SubConverter):
         rtHandler = rtf.read()
         rtf.close()
         romanTextTranslate.romanTextToStreamScore(rtHandler, self.stream)
+
+    def write(self, obj, fmt, fp=None, subformats=None, **keywords):  # pragma: no cover
+        '''
+        Writes 'RomanText' files (using the extension .rntxt) from a music21.stream.
+        '''
+
+        from music21.romanText import writeRoman
+        if fp is None:
+            fp = self.getTemporaryFile()
+
+        with open(fp, 'w') as text_file:
+            for entry in writeRoman.RnWriter(obj).combinedList:
+                text_file.write(entry + '\n')
+
+        return fp
 
 
 class ConverterClercqTemperley(SubConverter):
@@ -1226,14 +1297,15 @@ class ConverterMEI(SubConverter):
     # registerShowFormats = ('mei',)
     # registerOutputExtensions = ('mei',)
 
-    def parseData(self, dataString, number=None):
+    def parseData(self, dataString: str, number=None) -> 'music21.stream.Stream':
         '''
         Convert a string with an MEI document into its corresponding music21 elements.
 
-        :param str dataString: The string with XML to convert.
-        :param NoneType number: Unused in this class. Default is ``None``.
-        :returns: The music21 objects corresponding to the MEI file.
-        :rtype: :class:`~music21.stream.Stream` or subclass
+        * dataString: The string with XML to convert.
+
+        * number: Unused in this class. Default is ``None``.
+
+        Returns the music21 objects corresponding to the MEI file.
         '''
         from music21 import mei
         if dataString.startswith('mei:'):
@@ -1243,14 +1315,19 @@ class ConverterMEI(SubConverter):
 
         return self.stream
 
-    def parseFile(self, filePath, number=None):
+    def parseFile(
+        self,
+        filePath: Union[str, pathlib.Path],
+        number=None
+    ) -> 'music21.stream.Stream':
         '''
         Convert a file with an MEI document into its corresponding music21 elements.
 
-        :param str filePath: Full pathname to the file containing MEI data.
-        :param NoneType number: Unused in this class. Default is ``None``.
-        :return: The music21 objects corresponding to the MEI file.
-        :rtype: :class:`~music21.stream.Stream` or subclass
+        * filePath: Full pathname to the file containing MEI data as a string or Path.
+
+        * number: Unused in this class. Default is ``None``.
+
+        Returns the music21 objects corresponding to the MEI file.
         '''
         # In Python 3 we try the two most likely encodings to work. (UTF-16 is outputted from
         # "sibmei", the Sibelius-to-MEI exporter).
@@ -1326,7 +1403,7 @@ class Test(unittest.TestCase):
         with mock.patch('music21.mei.MeiToM21Converter') as mockConv:
             testPath = common.getSourceFilePath() / 'mei' / 'test' / 'notes_in_utf16.mei'
             testConverter = ConverterMEI()
-            testConverter.parseFile(str(testPath))  # remove str in Py3.6
+            testConverter.parseFile(testPath)
             self.assertEqual(1, mockConv.call_count)
 
     def testImportMei4(self):
@@ -1337,7 +1414,7 @@ class Test(unittest.TestCase):
         with mock.patch('music21.mei.MeiToM21Converter') as mockConv:
             testPath = common.getSourceFilePath() / 'mei' / 'test' / 'notes_in_utf8.mei'
             testConverter = ConverterMEI()
-            testConverter.parseFile(str(testPath))  # remove str in Py3.6
+            testConverter.parseFile(testPath)
             self.assertEqual(1, mockConv.call_count)
 
     def testXMLtoPNG(self):
@@ -1345,50 +1422,41 @@ class Test(unittest.TestCase):
         testing the findPNGfpFromXMLfp method with three different files of lengths
         that create .png files with -1, -01, and -001 in the fp
         '''
-        # TODO: Convert to pathlib....
         env = environment.Environment()
-        tempFp1 = str(env.getTempFile())
-        xmlFp1 = tempFp1 + '.xml'
-        os.rename(tempFp1, tempFp1 + '-1.png')
-        tempFp1 += '-1.png'
-        xmlConverter1 = ConverterMusicXML()
-        pngFp1 = xmlConverter1.findPNGfpFromXMLfp(xmlFp1)
-        self.assertEqual(pngFp1, tempFp1)
+        for ext_base in '1', '01', '001':
+            png_ext = '-' + ext_base + '.png'
 
-        env = environment.Environment()
-        tempFp2 = str(env.getTempFile())
-        xmlFp2 = tempFp2 + '.xml'
-        os.rename(tempFp2, tempFp2 + '-01.png')
-        tempFp2 += '-01.png'
-        xmlConverter2 = ConverterMusicXML()
-        pngFp2 = xmlConverter2.findPNGfpFromXMLfp(xmlFp2)
-        self.assertEqual(pngFp2, tempFp2)
+            tempFp1 = str(env.getTempFile())
+            xmlFp1 = tempFp1 + '.xml'
+            os.rename(tempFp1, tempFp1 + png_ext)
+            tempFp1 += png_ext
+            xmlConverter1 = ConverterMusicXML()
+            pngFp1 = xmlConverter1.findPNGfpFromXMLfp(xmlFp1)
+            self.assertEqual(pngFp1, tempFp1)
 
-        env = environment.Environment()
-        tempFp3 = str(env.getTempFile())
-        xmlFp3 = tempFp3 + '.xml'
-        os.rename(tempFp3, tempFp3 + '-001.png')
-        tempFp3 += '-001.png'
-        xmlConverter3 = ConverterMusicXML()
-        pngFp3 = xmlConverter3.findPNGfpFromXMLfp(xmlFp3)
-        self.assertEqual(pngFp3, tempFp3)
 
     def testXMLtoPNGTooLong(self):
         '''
-        testing the findPNGfpFromXMLfp method with a file that is >999 pages long
+        testing the findPNGfpFromXMLfp method with a file that is obscenely long
         '''
         env = environment.Environment()
         tempFp = str(env.getTempFile())
         xmlFp = tempFp + '.xml'
-        os.rename(tempFp, tempFp + '-0001.png')
-        tempFp += '-0001.png'
+        os.rename(tempFp, tempFp + '-0000001.png')
+        tempFp += '-0000001.png'
         xmlConverter = ConverterMusicXML()
         self.assertRaises(SubConverterFileIOException, xmlConverter.findPNGfpFromXMLfp, xmlFp)
 
+    def testWriteMXL(self):
+        from music21 import converter
+        from music21.musicxml import testPrimitive
+
+        s = converter.parseData(testPrimitive.multiDigitEnding)
+        mxlPath = s.write('mxl')
+        self.assertTrue(str(mxlPath).endswith('.mxl'))
+
 
 class TestExternal(unittest.TestCase):  # pragma: no cover
-    def runTest(self):
-        pass
 
     def testXMLShow(self):
         from music21 import corpus

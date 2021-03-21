@@ -9,7 +9,7 @@
 # License:      BSD, see license.txt
 # ------------------------------------------------------------------------------
 '''
-Convertor for parsing the tabular representations of harmonic analysis such as the
+Converter for parsing the tabular representations of harmonic analysis such as the
 DCMLab's Annotated Beethoven Corpus (Neuwirth et al. 2018).
 '''
 
@@ -42,7 +42,6 @@ class TabChord:
     '''
     An intermediate representation format for moving between tabular data and music21 chords.
     '''
-
     def __init__(self):
         self.combinedChord = None  # 'chord' in ABC original, otherwise names the same
         self.altchord = None
@@ -64,10 +63,6 @@ class TabChord:
         self.relativeroot = None
         self.phraseend = None
         self.representationType = None  # Added (not in DCML)
-
-    # TODO:
-    # create option higher up in the m21 pipeline for changing minor 6/7th handling
-    # integrate this _changeRepresentation method there.
 
     def _changeRepresentation(self):
         '''
@@ -212,8 +207,8 @@ def makeTabChord(row):
 
     This is how to make the TabChord:
 
-    >>> tabRowAsString1 = [".C.I6", "", "1", "1.0", "1.0", "2/4", "1", "2", "3", "2.0",
-    ...                                        "C", "I", "", "I", "", "", "", "", "false"]
+    >>> tabRowAsString1 = ['.C.I6', '', '1', '1.0', '1.0', '2/4', '1', '2', '3', '2.0',
+    ...                                        'C', 'I', '', 'I', '', '', '', '', 'false']
     >>> testTabChord1 = romanText.tsvConverter.makeTabChord(tabRowAsString1)
 
     And now let's check that it really is a TabChord:
@@ -275,8 +270,8 @@ class TsvHandler:
 
     And for our last trick, we can put the whole lot in a music21 stream.
 
-    >>> strm = handler.toM21Stream()
-    >>> strm.parts[0].measure(1)[0].figure
+    >>> out_stream = handler.toM21Stream()
+    >>> out_stream.parts[0].measure(1)[0].figure
     'I'
 
     '''
@@ -286,13 +281,11 @@ class TsvHandler:
         self.tsvData = self.importTsv()
         self.chordList = []
         self.m21stream = None
-        self.prepdStream = None
+        self.preparedStream = None
 
     def importTsv(self):
         '''
         Imports TSV file data for further processing.
-
-        See docs at :class:`music.romanText.TsvHandler`.
         '''
 
         fileName = self.tsvFileName
@@ -304,7 +297,6 @@ class TsvHandler:
                     continue
                 values = line.strip().split('\t')
                 data.append([v.strip('\"') for v in values])
-        f.close()
 
         return data
 
@@ -312,8 +304,6 @@ class TsvHandler:
         '''
         Converts a list of lists (of the type imported by importTsv)
         into TabChords (i.e. a list of TabChords).
-
-        See docs at :class:`music.romanText.TsvHandler`.
         '''
 
         data = self.tsvData
@@ -336,25 +326,24 @@ class TsvHandler:
         (converting to the music21 representation format as necessary),
         creates a suitable music21 stream (by running .prepStream() using data from the TabChords),
         and populates that stream with the new RomanNumerals.
-
-        See docs at :class:`music.romanText.TsvHandler`.
         '''
 
         self.prepStream()
 
-        s = self.prepdStream
-        p = s.parts[0]  # Just to get to the part, not that there are several.
+        s = self.preparedStream
+        p = s.parts.first()  # Just to get to the part, not that there are several.
 
         for thisChord in self.chordList:
             offsetInMeasure = thisChord.beat - 1  # beats always measured in quarter notes
             measureNumber = thisChord.measure
+            m21Measure = p.measure(measureNumber)
 
             if thisChord.representationType == 'DCML':
                 thisChord._changeRepresentation()
 
             thisM21Chord = thisChord.tabToM21()  # In either case.
 
-            p.measure(measureNumber).insert(offsetInMeasure, thisM21Chord)
+            m21Measure.insert(offsetInMeasure, thisM21Chord)
 
         self.m21stream = s
 
@@ -367,10 +356,7 @@ class TsvHandler:
         as well as some (the available) metadata based on the original TSV data.
         Works like the .template() method,
         except that we don't have a score to base the template on as such.
-
-        See docs at :class:`music.romanText.TsvHandler`.
         '''
-
         s = stream.Score()
         p = stream.Part()
 
@@ -394,7 +380,7 @@ class TsvHandler:
 
         currentOffset = 0
 
-        previousMeasure = self.chordList[0].measure - 1  # Covers anacruses
+        previousMeasure: int = self.chordList[0].measure - 1  # Covers pickups
         for entry in self.chordList:
             if entry.measure == previousMeasure:
                 continue
@@ -422,13 +408,12 @@ class TsvHandler:
 
         s.append(p)
 
-        self.prepdStream = s
+        self.preparedStream = s
 
         return s
 
+
 # ------------------------------------------------------------------------------
-
-
 class M21toTSV:
     '''
     Conversion starting with a music21 stream.
@@ -454,8 +439,6 @@ class M21toTSV:
         '''
         Converts a list of music21 chords to a list of lists
         which can then be written to a tsv file with toTsv(), or processed another way.
-
-        See docs at :class:`music.romanText.M21toTSV`.
         '''
 
         tsvData = []
@@ -522,41 +505,40 @@ class M21toTSV:
         '''
         Writes a list of lists (e.g. from m21ToTsv()) to a tsv file.
         '''
+        with open(filePathAndName, 'a', newline='') as csvFile:
+            csvOut = csv.writer(csvFile,
+                                delimiter='\t',
+                                quotechar='"',
+                                quoting=csv.QUOTE_MINIMAL)
 
-        with open(filePathAndName, 'a') as csvfile:
-            csvOut = csv.writer(csvfile, delimiter='\t',
-                                quotechar='"', quoting=csv.QUOTE_MINIMAL)
+            headers = (
+                'chord',
+                'altchord',
+                'measure',
+                'beat',
+                'totbeat',
+                'timesig',
+                'op',
+                'no',
+                'mov',
+                'length',
+                'global_key',
+                'local_key',
+                'pedal',
+                'numeral',
+                'form',
+                'figbass',
+                'changes',
+                'relativeroot',
+                'phraseend',
+            )
 
-            headers = ('chord',
-                        'altchord',
-                        'measure',
-                        'beat',
-                        'totbeat',
-                        'timesig',
-                        'op',
-                        'no',
-                        'mov',
-                        'length',
-                        'global_key',
-                        'local_key',
-                        'pedal',
-                        'numeral',
-                        'form',
-                        'figbass',
-                        'changes',
-                        'relativeroot',
-                        'phraseend',)
-
-            csvOut.writerow([x for x in headers])
+            csvOut.writerow(headers)
 
             for thisEntry in self.tsvData:
-                csvOut.writerow([x for x in thisEntry])
+                csvOut.writerow(thisEntry)
 
 # ------------------------------------------------------------------------------
-
-# Static.
-
-
 def is_minor(test_key):
     '''
     Checks whether a key is minor or not simply by upper vs lower case.
@@ -567,7 +549,6 @@ def is_minor(test_key):
     >>> romanText.tsvConverter.is_minor('f')
     True
     '''
-
     return test_key == test_key.lower()
 
 
@@ -592,7 +573,8 @@ def characterSwaps(preString, minor=True, direction='m21-DCML'):
     >>> romanText.tsvConverter.characterSwaps(testStr2, minor=True, direction='DCML-m21')
     '.f.vii'
     '''
-
+    search = ''
+    insert = ''
     if direction == 'm21-DCML':
         characterDict = {'/o': '%',
                          'ø': '%',
@@ -650,7 +632,6 @@ def getLocalKey(local_key, global_key, convertDCMLToM21=False):
     >>> romanText.tsvConverter.getLocalKey('vii', 'a', convertDCMLToM21=True)
     'g'
     '''
-
     if convertDCMLToM21:
         local_key = characterSwaps(local_key, minor=is_minor(global_key[0]), direction='DCML-m21')
 
@@ -660,6 +641,8 @@ def getLocalKey(local_key, global_key, convertDCMLToM21=False):
         newKey = rt.upper()
     elif asRoman.isMinorTriad():
         newKey = rt.lower()
+    else:  # pragma: no cover
+        raise ValueError('local key must be major or minor')
 
     return newKey
 
@@ -681,7 +664,6 @@ def getSecondaryKey(rn, local_key):
     >>> romanText.tsvConverter.getSecondaryKey('V/vi', 'C')
     'a'
     '''
-
     if '/' not in rn:
         very_local_as_key = local_key
     else:
@@ -697,7 +679,6 @@ def getSecondaryKey(rn, local_key):
 class Test(unittest.TestCase):
 
     def testTsvHandler(self):
-
         name = 'tsvEg.tsv'
         # A short and improbably complicated test case complete with:
         # '@none' (rest entry), '/' relative root, and time signature changes.
@@ -735,27 +716,23 @@ class Test(unittest.TestCase):
         self.assertEqual(m21Chord2.key.name, 'C major')
 
         # M21 stream
-        strm = handler.toM21Stream()
-        self.assertEqual(strm.parts[0].measure(1)[0].figure, 'I')  # First item in measure 1
+        out_stream = handler.toM21Stream()
+        self.assertEqual(out_stream.parts[0].measure(1)[0].figure, 'I')  # First item in measure 1
 
     def testM21ToTsv(self):
-
         from music21 import corpus
 
         bachHarmony = corpus.parse('bach/choraleAnalyses/riemenschneider001.rntxt')
         initial = M21toTSV(bachHarmony)
         tsvData = initial.tsvData
-        self.assertEqual(bachHarmony.parts[0].measure(1)[0].figure, 'I')  # NB anacrustic measure 0.
+        self.assertEqual(bachHarmony.parts[0].measure(1)[0].figure, 'I')  # NB pickup measure 0.
         self.assertEqual(tsvData[1][0], 'I')
 
         # Test .write
         envLocal = environment.Environment()
         tempF = envLocal.getTempFile()
-        from os import path
-        path = path.split(tempF)[0]
-        newFileName = 'TestTsvFile'
-        initial.write(path + newFileName)
-        handler = TsvHandler(path + newFileName)
+        initial.write(tempF)
+        handler = TsvHandler(tempF)
         self.assertEqual(handler.tsvData[0][0], 'I')
 
     def testIsMinor(self):
@@ -763,7 +740,6 @@ class Test(unittest.TestCase):
         self.assertFalse(is_minor('F'))
 
     def testOfCharacter(self):
-
         startText = 'before%after'
         newText = ''.join([characterSwaps(x, direction='DCML-m21') for x in startText])
 
@@ -771,6 +747,7 @@ class Test(unittest.TestCase):
         self.assertIsInstance(newText, str)
         self.assertEqual(len(startText), len(newText))
         self.assertEqual(startText, 'before%after')
+        # noinspection SpellCheckingInspection
         self.assertEqual(newText, 'beforeøafter')
 
         testStr1in = 'ii%'
@@ -792,7 +769,6 @@ class Test(unittest.TestCase):
         self.assertEqual(testStr3out, 'vii')
 
     def testGetLocalKey(self):
-
         test1 = getLocalKey('V', 'G')
         self.assertEqual(test1, 'D')
 
@@ -806,7 +782,6 @@ class Test(unittest.TestCase):
         self.assertEqual(test4, 'g')
 
     def testGetSecondaryKey(self):
-
         testRN = 'V/vi'
         testLocalKey = 'D'
 

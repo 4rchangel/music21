@@ -14,16 +14,17 @@ Utilities for working with file formats.
 
 almost everything here is deprecated.
 '''
-__all__ = ['findSubConverterForFormat',
-           'findFormat',
-           'findInputExtension',
-           'findFormatFile',
-           'findFormatExtFile',
-           'findFormatExtURL',
-           'VALID_SHOW_FORMATS',
-           'VALID_WRITE_FORMATS',
-           'VALID_AUTO_DOWNLOAD',
-           ]
+__all__ = [
+    'findSubConverterForFormat',
+    'findFormat',
+    'findInputExtension',
+    'findFormatFile',
+    'findFormatExtFile',
+    'findFormatExtURL',
+    'VALID_SHOW_FORMATS',
+    'VALID_WRITE_FORMATS',
+    'VALID_AUTO_DOWNLOAD',
+]
 
 import pathlib
 
@@ -40,7 +41,8 @@ VALID_WRITE_FORMATS = ['musicxml', 'lilypond', 'text', 'textline', 'midi',
                        'lily.pdf', 'lily.png', 'lily.svg', 'braille',
                        'vexflow', 'vexflow.html', 'vexflow.js',
                        'ipython', 'ipython.png', 'ipython.midi',
-                       'musicxml.png', 'musicxml.pdf']
+                       'musicxml.png', 'musicxml.pdf',
+                       'rntxt']
 VALID_AUTO_DOWNLOAD = ['ask', 'deny', 'allow']
 
 # ------------------------------------------------------------------------------
@@ -57,6 +59,9 @@ def findSubConverterForFormat(fmt):
 
     >>> common.findSubConverterForFormat('text')
     <class 'music21.converter.subConverters.ConverterText'>
+
+    >>> common.findSubConverterForFormat('romantext')
+    <class 'music21.converter.subConverters.ConverterRomanText'>
 
     Some subconverters have format aliases
 
@@ -316,6 +321,7 @@ def findFormatExtURL(url):
     >>> urlB = 'http://somesite.com/cgi-bin/ksdata?l=cc/schubert/d0576&file=d0576-06.krn&f=kern'
     >>> urlC = 'http://somesite.com/cgi-bin/ksdata?l=cc/bach/cello&file=bwv1007-01.krn&f=xml'
     >>> urlF = 'http://junk'
+    >>> urlM = 'http://somesite.com/files/mid001.mid'
 
     >>> common.findFormatExtURL(urlA)
     ('musicxml', '.xml')
@@ -325,6 +331,8 @@ def findFormatExtURL(url):
     ('musicxml', '.xml')
     >>> common.findFormatExtURL(urlF)
     (None, None)
+    >>> common.findFormatExtURL(urlM)
+    ('midi', '.mid')
     '''
     from music21 import converter
     ext = None

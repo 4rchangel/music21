@@ -241,7 +241,7 @@ class FiguredBassLine:
         else:
             raise FiguredBassLineException(
                 'Not a valid bassObject (only note.Note, '
-                + 'harmony.ChordSymbol, and roman.RomanNumeral supported) was %r' % bassObject)
+                + f'harmony.ChordSymbol, and roman.RomanNumeral supported) was {bassObject!r}')
 
     def generateBassLine(self):
         '''
@@ -293,8 +293,8 @@ class FiguredBassLine:
 
         bl2 = bassLine.makeNotation(inPlace=False, cautionaryNotImmediateRepeat=False)
         if r is not None:
-            m0 = bl2.getElementsByClass('Measure')[0]
-            m0.remove(m0.getElementsByClass('Rest')[0])
+            m0 = bl2.getElementsByClass('Measure').first()
+            m0.remove(m0.getElementsByClass('Rest').first())
             m0.padAsAnacrusis()
         return bl2
 
@@ -793,9 +793,7 @@ class FiguredBassLineException(exceptions21.Music21Exception):
 
 
 class Test(unittest.TestCase):
-
-    def runTest(self):
-        pass
+    pass
 
 
 if __name__ == '__main__':

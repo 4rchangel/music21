@@ -182,7 +182,7 @@ def asTree(inputStream, flatten=False, classList=None, useTimespans=False, group
     >>> etFlat.getPositionAfter(0.5)
     SortTuple(atEnd=0, offset=1.0, priority=0, classSortOrder=20, isNotGrace=1, insertIndex=...)
 
-    >>> etFlatNotes = tree.fromStream.asTree(score, flatten=True, classList=[note.Note])
+    >>> etFlatNotes = tree.fromStream.asTree(score, flatten=True, classList=(note.Note,))
     >>> etFlatNotes
     <ElementTree {12} (0.0 <0.20...> to 8.0) <music21.stream.Score exampleScore>>
 
@@ -204,7 +204,7 @@ def asTree(inputStream, flatten=False, classList=None, useTimespans=False, group
         for element in inputStreamElements:
             flatOffset = common.opFrac(lastParentage.elementOffset(element) + initialOffset)
 
-            if element.isStream and flatten is not False:  # True or "semiFlat"
+            if element.isStream and flatten is not False:  # True or 'semiFlat'
                 localParentage = currentParentage + (element,)
                 recurseGetTreeByClass(element,  # put the elements into the current tree...
                                       currentParentage=localParentage,

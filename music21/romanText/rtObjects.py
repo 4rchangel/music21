@@ -16,7 +16,6 @@ and Christopher Ariza in ISMIR 2019.
 '''
 import fractions
 import io
-import pathlib
 import re
 import unittest
 
@@ -549,7 +548,7 @@ class RTMeasure(RTToken):
         # assume that we have already checked that this is a measure
         g = reMeasureTag.match(src)
         if g is None:  # not measure tag found
-            raise RTHandlerException('found no measure tag: %s' % src)
+            raise RTHandlerException(f'found no measure tag: {src}')
         iEnd = g.end()  # get end index
         rawTag = src[:iEnd].strip()
         self.tag = rawTag
@@ -577,9 +576,9 @@ class RTMeasure(RTToken):
 
     def _reprInternal(self):
         if len(self.number) == 1:
-            numberStr = '%s' % self.number[0]
+            numberStr = str(self.number[0])
         else:
-            numberStr = '%s-%s' % (self.number[0], self.number[1])
+            numberStr = f'{self.number[0]}-{self.number[1]}'
         return numberStr
 
     def isMeasure(self):
@@ -768,8 +767,8 @@ class RTBeat(RTAtom):
             fracBeatFrac = 0.0
 
         if len(parts) > 3:
-            environLocal.printDebug(['got unexpected beat: %s' % self.src])
-            raise RTTokenException('cannot handle specification: %s' % self.src)
+            environLocal.printDebug([f'got unexpected beat: {self.src}'])
+            raise RTTokenException(f'cannot handle specification: {self.src}')
 
         beat = common.opFrac(mainBeat + fracPart + fracBeatFrac)
         return beat
@@ -799,14 +798,13 @@ class RTBeat(RTAtom):
         >>> rtc.getOffset(meter.TimeSignature('6/8'))
         1.25
         '''
-        from music21 import meter
         beat = self.getBeatFloatOrFrac()
 
         # environLocal.printDebug(['using beat value:', beat])
         # TODO: check for exceptions/errors if this beat is bad
         try:
             post = timeSignature.getOffsetFromBeat(beat)
-        except meter.TimeSignatureException:
+        except exceptions21.TimeSignatureException:
             environLocal.printDebug(['bad beat specification: %s in a meter of %s' % (
                                     self.src, timeSignature)])
             post = 0.0
@@ -1142,7 +1140,7 @@ class RTHandler:
             except Exception:
                 import traceback
                 tracebackMessage = traceback.format_exc()
-                raise RTHandlerException('At line %d (%s) an exception was raised: \n%s' % (
+                raise RTHandlerException('At line %s (%s) an exception was raised: \n%s' % (
                     currentLineNumber, line, tracebackMessage))
         return post
 
@@ -1394,9 +1392,6 @@ class RTFile(prebase.ProtoM21Object):
         '''Open a file for reading, trying a variety of encodings and then
         trying them again with an ignore if it is not possible.
         '''
-        if isinstance(filename, pathlib.Path):
-            filename = str(filename)  # remove in Py3.6
-
         for encoding in ('utf-8', 'macintosh', 'latin-1', 'utf-16'):
             try:
                 self.file = io.open(filename, encoding=encoding)
@@ -1414,7 +1409,7 @@ class RTFile(prebase.ProtoM21Object):
                     pass
             if self.file is None:
                 raise RomanTextException(
-                    'Cannot parse file %s, possibly a broken codec?' % filename)
+                    f'Cannot parse file {filename}, possibly a broken codec?')
 
         self.filename = filename
 
@@ -1449,8 +1444,6 @@ class RTFile(prebase.ProtoM21Object):
 # ------------------------------------------------------------------------------
 
 class Test(unittest.TestCase):
-    def runTest(self):
-        pass
 
     def testBasicA(self):
         from music21.romanText import testFiles

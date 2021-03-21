@@ -21,18 +21,21 @@ import math
 import unittest
 import xml.etree.ElementTree as ET
 from xml.etree.ElementTree import Element, SubElement, ElementTree
+from typing import List, Optional, Union
 
+# external dependencies
 import webcolors
-
 
 # modules that import this include converter.py.
 # thus, cannot import these here
+from music21 import base
 from music21 import common
 from music21 import defaults
 from music21 import exceptions21
 
 from music21 import bar
 from music21 import clef
+from music21 import chord  # for typing
 from music21 import duration
 from music21 import metadata
 from music21 import note
@@ -43,22 +46,16 @@ from music21 import stream
 from music21 import style
 from music21.stream.iterator import OffsetIterator
 
+from music21.musicxml import helpers
+from music21.musicxml.partStaffExporter import PartStaffExporterMixin
 from music21.musicxml import xmlObjects
+from music21.musicxml.xmlObjects import MusicXMLExportException
 
 from music21 import environment
 _MOD = "musicxml.m21ToXml"
 environLocal = environment.Environment(_MOD)
 
 # ------------------------------------------------------------------------------
-
-
-class MusicXMLExportException(exceptions21.Music21Exception):
-    pass
-
-
-class NoteheadException(MusicXMLExportException):
-    pass
-
 
 def typeToMusicXMLType(value):
     '''Convert a music21 type to a MusicXML type.
@@ -91,12 +88,13 @@ def normalizeColor(color):
     if color in (None, ''):
         return color
     if '#' not in color:
-        return (webcolors.css3_names_to_hex[color]).upper()
+        return webcolors.name_to_hex(color).upper()
     else:
         return color.upper()
 
 
 def getMetadataFromContext(s):
+    # noinspection PyShadowingNames
     '''
     Get metadata from site or context, so that a Part
     can be shown and have the rich metadata of its Score
@@ -128,8 +126,15 @@ def getMetadataFromContext(s):
     return None
 
 
-def _setTagTextFromAttribute(m21El, xmlEl, tag, attributeName=None,
-                             *, transform=None, forceEmpty=False):
+def _setTagTextFromAttribute(
+    m21El,
+    xmlEl: Element,
+    tag: str,
+    attributeName: Optional[str] = None,
+    *,
+    transform=None,
+    forceEmpty=False
+):
     '''
     If m21El has an attribute called attributeName, create a new SubElement
     for xmlEl and set its text to the value of the m21El attribute.
@@ -142,7 +147,7 @@ def _setTagTextFromAttribute(m21El, xmlEl, tag, attributeName=None,
     Will not create an empty element unless forceEmpty is True
 
 
-    >>> from music21.musicxml.m21ToXml import Element
+    >>> from xml.etree.ElementTree import Element
     >>> e = Element('accidental')
 
     >>> seta = musicxml.m21ToXml._setTagTextFromAttribute
@@ -239,7 +244,8 @@ def _setAttributeFromAttribute(m21El, xmlEl, xmlAttributeName, attributeName=Non
     xmlEl.set(xmlAttributeName, str(value))
 
 
-def _synchronizeIds(element, m21Object):
+def _synchronizeIds(element: Element, m21Object: Optional[base.Music21Object]) -> None:
+    # noinspection PyTypeChecker
     '''
     MusicXML 3.1 defines the id attribute (entity: %optional-unique-id)
     on many elements which is perfect for getting from .id on
@@ -272,6 +278,8 @@ def _synchronizeIds(element, m21Object):
     >>> e.get('id', 'no idea')
     'no idea'
     '''
+    # had to suppress type-checking because of spurious error on
+    #    e.get('id', 'no idea')
     if m21Object is None or not hasattr(m21Object, 'id'):
         return
     if not xmlObjects.isValidXSDID(m21Object.id):
@@ -470,7 +478,7 @@ class GeneralObjectExporter:
             st2.metadata = copy.deepcopy(getMetadataFromContext(st))
             return self.fromScore(st2)
 
-        elif st.getElementsByClass('Stream')[0].isFlat:  # like a part w/ measures...
+        elif st.getElementsByClass('Stream').first().isFlat:  # like a part w/ measures...
             st2 = stream.Part()
             st2.mergeAttributes(st)
             st2.elements = copy.deepcopy(st)
@@ -520,6 +528,7 @@ class GeneralObjectExporter:
         return self.fromStream(out)
 
     def fromScale(self, scaleObject):
+        # noinspection PyShadowingNames
         '''
         Generate the pitches from this scale
         and put it into a stream.Measure, then call
@@ -561,6 +570,7 @@ class GeneralObjectExporter:
         return self.fromMeasure(m)
 
     def fromDiatonicScale(self, diatonicScaleObject):
+        # noinspection PyShadowingNames
         '''
         Return a complete musicxml of the DiatonicScale
 
@@ -610,14 +620,15 @@ class GeneralObjectExporter:
         '''
         # return a complete musicxml representation
         objCopy = copy.deepcopy(obj)
-    #         m = stream.Measure()
-    #         m.timeSignature = tsCopy
-    #         m.append(note.Rest())
+        # m = stream.Measure()
+        # m.timeSignature = tsCopy
+        # m.append(note.Rest())
         out = stream.Measure(number=1)
         out.append(objCopy)
         return self.fromMeasure(out)
 
     def fromGeneralNote(self, n):
+        # noinspection PyShadowingNames
         '''
         Translate a music21 :class:`~music21.note.Note` into an object
         ready to be parsed.
@@ -647,6 +658,7 @@ class GeneralObjectExporter:
         return self.fromMeasure(out)
 
     def fromPitch(self, p):
+        # noinspection PyShadowingNames
         '''
         Translate a music21 :class:`~music21.pitch.Pitch` into an object
         ready to be parsed.
@@ -674,11 +686,10 @@ class XMLExporterBase:
     contains functions that could be called
     at multiple levels of exporting (Score, Part, Measure).
     '''
-
     def __init__(self):
         self.xmlRoot = None
 
-    def asBytes(self, noCopy=True):
+    def asBytes(self, noCopy=True) -> bytes:
         '''
         returns the xmlRoot as a bytes object. If noCopy is True
         (default), modifies the file for pretty-printing in place.  Otherwise,
@@ -687,20 +698,17 @@ class XMLExporterBase:
         sio = io.BytesIO()
         sio.write(self.xmlHeader())
         rootObj = self.xmlRoot
-        if noCopy is False:
-            rootObj = copy.deepcopy(rootObj)
-        self.indent(rootObj)
-        et = ElementTree(rootObj)
-        et.write(sio, encoding='utf-8', xml_declaration=False)
+        rootObj_string = helpers.dumpString(rootObj, noCopy=noCopy)
+        sio.write(rootObj_string.encode('utf-8'))
         v = sio.getvalue()
         sio.close()
         return v
 
-    def addDividerComment(self, comment=''):
+    def addDividerComment(self, comment: str = '') -> None:
         '''
         Add a divider to xmlRoot.
 
-        >>> from music21.musicxml.m21ToXml import Element
+        >>> from xml.etree.ElementTree import Element
         >>> e1 = Element('accidental')
         >>> e2 = Element('accidental')
 
@@ -729,63 +737,9 @@ class XMLExporterBase:
     # ------------------------------------------------------------------------------
     @staticmethod
     def dump(obj):
-        r'''
-        wrapper around xml.etree.ElementTree as ET that returns a string
-        in every case.
+        return helpers.dump(obj)
 
-        >>> from music21.musicxml.m21ToXml import Element
-        >>> e = Element('accidental')
-
-        >>> XB = musicxml.m21ToXml.XMLExporterBase
-        >>> XB.dump(e)
-        <accidental />
-
-        >>> e.text = '∆'
-        >>> e.text == '∆'
-        True
-        >>> XB.dump(e)
-        <accidental>∆</accidental>
-        '''
-        xmlEl = copy.deepcopy(obj)  # adds 5% overhead
-        XMLExporterBase.indent(xmlEl)  # adds 5% overhead
-
-        for el in xmlEl.iter():
-            attrib = el.attrib
-            if len(attrib) > 1:
-                # adjust attribute order, e.g. by sorting
-                attribs = sorted(attrib.items())
-                attrib.clear()
-                attrib.update(attribs)
-        xStr = ET.tostring(xmlEl, encoding='unicode')
-        xStr = xStr.rstrip()
-        print(xStr)
-
-    @staticmethod
-    def indent(elem, level=0):
-        '''
-        helper method, indent an element in place:
-        '''
-        i = '\n' + level * '  '
-        lenL = len(elem)
-        if lenL:
-            if not elem.text or not elem.text.strip():
-                elem.text = i + '  '
-            if not elem.tail or not elem.tail.strip():
-                elem.tail = i
-
-            subElem = None
-            for subElem in elem:
-                XMLExporterBase.indent(subElem, level + 1)
-            if subElem is not None:  # last el...
-                subElem.tail = i
-
-            if not elem.tail or not elem.tail.strip():
-                elem.tail = '\n' + level * '  '
-        else:
-            if level and (not elem.tail or not elem.tail.strip()):
-                elem.tail = i
-
-    def xmlHeader(self):
+    def xmlHeader(self) -> bytes:
         return (b'''<?xml version="1.0" encoding="utf-8"?>\n<!DOCTYPE score-partwise  '''
                 + b'''PUBLIC "-//Recordare//DTD MusicXML '''
                 + defaults.musicxmlVersion.encode('utf-8')
@@ -808,12 +762,12 @@ class XMLExporterBase:
             stObj = m21Object.style
 
         if not common.isIterable(musicXMLNames):
-            musicXMLNames = [musicXMLNames]
+            musicXMLNames = (musicXMLNames,)
 
         if m21Names is None:
-            m21Names = [common.hyphenToCamelCase(x) for x in musicXMLNames]
+            m21Names = (common.hyphenToCamelCase(x) for x in musicXMLNames)
         elif not common.isIterable(m21Names):
-            m21Names = [m21Names]
+            m21Names = (m21Names,)
 
         for xmlName, m21Name in zip(musicXMLNames, m21Names):
             try:
@@ -919,6 +873,19 @@ class XMLExporterBase:
         >>> XB.setFont(mxObj, te)
         >>> XB.dump(mxObj)
         <text font-family="Courier,monospaced" font-size="24" font-style="italic">hi</text>
+
+        >>> XB = musicxml.m21ToXml.XMLExporterBase()
+        >>> mxObj = El('<text>hi</text>')
+        >>> te = expressions.TextExpression('hi!')
+        >>> te.style.fontStyle = 'bold'
+        >>> XB.setFont(mxObj, te)
+        >>> XB.dump(mxObj)
+        <text font-weight="bold">hi</text>
+
+        >>> te.style.fontStyle = 'bolditalic'
+        >>> XB.setFont(mxObj, te)
+        >>> XB.dump(mxObj)
+        <text font-style="italic" font-weight="bold">hi</text>
         '''
         musicXMLNames = ('font-style', 'font-size', 'font-weight')
         m21Names = ('fontStyle', 'fontSize', 'fontWeight')
@@ -929,6 +896,15 @@ class XMLExporterBase:
             st = m21Object.style
         else:
             return
+
+        if hasattr(st, 'fontStyle'):
+            # mxml does not support bold or bolditalic as font-style value
+            if st.fontStyle == 'bold':
+                mxObject.set('font-weight', 'bold')
+                mxObject.attrib.pop('font-style', None)
+            elif st.fontStyle == 'bolditalic':
+                mxObject.set('font-weight', 'bold')
+                mxObject.set('font-style', 'italic')
 
         if hasattr(st, 'fontFamily') and st.fontFamily:
             if common.isIterable(st.fontFamily):
@@ -1018,6 +994,7 @@ class XMLExporterBase:
     ###################
 
     def pageLayoutToXmlPrint(self, pageLayout, mxPrintIn=None):
+        # noinspection PyShadowingNames
         '''
         Given a PageLayout object, set object data for <print>
 
@@ -1099,6 +1076,7 @@ class XMLExporterBase:
             return mxPageLayout
 
     def systemLayoutToXmlPrint(self, systemLayout, mxPrintIn=None):
+        # noinspection PyShadowingNames
         '''
         Given a SystemLayout tag, set a <print> tag
 
@@ -1235,6 +1213,7 @@ class XMLExporterBase:
             return mxStaffLayout
 
     def accidentalToMx(self, a):
+        # noinspection PyShadowingNames
         '''
         Convert a pitch.Accidental object to a Element of tag accidental
 
@@ -1344,13 +1323,13 @@ class XMLExporterBase:
 
 # ---------
 
-class ScoreExporter(XMLExporterBase):
+class ScoreExporter(XMLExporterBase, PartStaffExporterMixin):
     '''
     Convert a Score (or outer stream with .parts) into
     a musicxml Element.
     '''
 
-    def __init__(self, score=None):
+    def __init__(self, score: Optional[stream.Score] = None):
         super().__init__()
         if score is None:
             # should not be done this way.
@@ -1372,7 +1351,7 @@ class ScoreExporter(XMLExporterBase):
 
         self.refStreamOrTimeRange = [0.0, self.highestTime]
 
-        self.partExporterList = []
+        self.partExporterList: List['PartExporter'] = []
 
         self.instrumentList = []
         self.midiChannelList = []
@@ -1404,7 +1383,7 @@ class ScoreExporter(XMLExporterBase):
         if s.hasPartLikeStreams():
             self.parsePartlikeScore()
         else:
-            self.parseFlatScore()  # TODO(msc): determine if ever called.
+            self.parseFlatScore()
 
         self.postPartProcess()
 
@@ -1494,9 +1473,14 @@ class ScoreExporter(XMLExporterBase):
         streamOfStreams = s.getElementsByClass('Stream')
         for innerStream in streamOfStreams:
             # may need to copy element here
-            # apply this streams offset to elements
-            innerStream.transferOffsetToElements()
-            ht = innerStream.highestTime
+            # apply this stream's offset to elements
+            # but retain offsets if inner stream is a Measure
+            # https://github.com/cuthbertLab/music21/issues/580
+            if isinstance(innerStream, stream.Measure):
+                ht = innerStream.offset + innerStream.highestTime
+            else:
+                innerStream.transferOffsetToElements()
+                ht = innerStream.highestTime
             if ht > self.highestTime:
                 self.highestTime = ht
         self.refStreamOrTimeRange = [0.0, self.highestTime]
@@ -1561,7 +1545,7 @@ class ScoreExporter(XMLExporterBase):
         called by .parse() if the score has individual parts.
 
         Calls makeRests() for the part, then creates a PartExporter for each part,
-        and runs .parse() on that part.  appends the PartExporter to self.partExporterList()
+        and runs .parse() on that part.  appends the PartExporter to self.partExporterList
         '''
         # would like to do something like this but cannot
         # replace object inside of the stream
@@ -1608,11 +1592,15 @@ class ScoreExporter(XMLExporterBase):
 
     def postPartProcess(self):
         '''
-        calls .setScoreHeader() then appends each PartExporter's xmlRoot from
-        self.partExporterList to self.xmlRoot
+        calls .joinPartStaffs() from the
+        :class:`~music21.musicxml.partStaffExporter.PartStaffExporterMixin`,
+        then calls .setScoreHeader(),
+        then appends each PartExporter's xmlRoot from
+        self.partExporterList to self.xmlRoot.
 
-        Called automatically by .parse()
+        Called automatically by .parse().
         '''
+        self.joinPartStaffs()
         self.setScoreHeader()
         for i, pex in enumerate(self.partExporterList):
             self.addDividerComment('Part ' + str(i + 1))
@@ -1621,10 +1609,10 @@ class ScoreExporter(XMLExporterBase):
     def setScoreHeader(self):
         '''
         Sets the group score-header in <score-partwise>.  Note that score-header is not
-        a separate tag, but just a way of crouping things from the tag.
+        a separate tag, but just a way of grouping things from the tag.
 
         runs `setTitles()`, `setIdentification()`, `setDefaults()`, changes textBoxes
-        to `<credit>` and does the major task of setting up the part-list with `setPartList()`
+        to `<credit>` and does the major task of setting up the part-list with `setPartList()`.
 
         '''
         s = self.stream
@@ -1643,6 +1631,7 @@ class ScoreExporter(XMLExporterBase):
         self.setPartList()
 
     def textBoxToXmlCredit(self, textBox):
+        # noinspection PyShadowingNames
         '''
         Convert a music21 TextBox to a MusicXML Credit.
 
@@ -1682,9 +1671,9 @@ class ScoreExporter(XMLExporterBase):
         # add all credit words to components
         count = 0
 
-        for l in textBox.content.split('\n'):
+        for line in textBox.content.split('\n'):
             mxCreditWords = Element('credit-words')
-            mxCreditWords.text = l
+            mxCreditWords.text = line
             # TODO: link/bookmark in credit-words
             if count == 0:  # on first, configure properties
                 self.setPrintStyleAlign(mxCreditWords, textBox)
@@ -1695,6 +1684,7 @@ class ScoreExporter(XMLExporterBase):
         return mxCredit
 
     def setDefaults(self):
+        # noinspection PyShadowingNames
         '''
         Returns a default object from self.firstScoreLayout or a very simple one if none exists.
 
@@ -1798,6 +1788,7 @@ class ScoreExporter(XMLExporterBase):
         return mxDefaults  # mostly for testing...
 
     def addStyleToXmlDefaults(self, mxDefaults):
+        # noinspection PyShadowingNames
         '''
         Optionally add an <appearance> tag (using `styleToXmlAppearance`)
         and <music-font>, <word-font>, zero or more <lyric-font> tags,
@@ -1829,7 +1820,6 @@ class ScoreExporter(XMLExporterBase):
             <lyric-language name="verse" xml:lang="fr" />
             <lyric-language name="chorus" xml:lang="en" />
         </defaults>
-
         '''
         if not self.stream.hasStyleInformation:
             return
@@ -1862,6 +1852,7 @@ class ScoreExporter(XMLExporterBase):
                 mxLyricLanguage.set('xml:lang', lyricLang)
 
     def styleToXmlAppearance(self):
+        # noinspection PyShadowingNames
         '''
         Populates the <appearance> tag of the <defaults> with
         information from the stream's .style information.
@@ -1882,8 +1873,6 @@ class ScoreExporter(XMLExporterBase):
         </appearance>
         '''
         st = self.stream.style
-        if not hasattr(st, 'lineWidths'):
-            return  # TODO: remove in v.5 release after all old data is gone.
 
         if (not st.lineWidths
                 and not st.noteSizes
@@ -1905,6 +1894,7 @@ class ScoreExporter(XMLExporterBase):
         return mxAppearance
 
     def setPartList(self):
+        # noinspection PyShadowingNames
         '''
         Returns a <part-list> and appends it to self.xmlRoot.
 
@@ -1984,6 +1974,7 @@ class ScoreExporter(XMLExporterBase):
         return mxPartList
 
     def staffGroupToXmlPartGroup(self, staffGroup):
+        # noinspection PyShadowingNames
         '''
         Create and configure an mxPartGroup object for the 'start' tag
         from a staff group spanner. Note that this object
@@ -2018,11 +2009,27 @@ class ScoreExporter(XMLExporterBase):
           <group-symbol>brace</group-symbol>
           <group-barline>no</group-barline>
         </part-group>
+
+        Now we avoid printing the name of the group:
+
+        >>> firstStaffGroup.style.hideObjectOnPrint = True
+        >>> mxPartGroup = SX.staffGroupToXmlPartGroup(firstStaffGroup)
+        >>> SX.dump(mxPartGroup)
+        <part-group type="start">
+          <group-name>Voices</group-name>
+          <group-name-display print-object="no" />
+          <group-abbreviation>Ch.</group-abbreviation>
+          <group-symbol>brace</group-symbol>
+          <group-barline>no</group-barline>
+        </part-group>
         '''
         mxPartGroup = Element('part-group')
         mxPartGroup.set('type', 'start')
         seta = _setTagTextFromAttribute
         seta(staffGroup, mxPartGroup, 'group-name', 'name')
+        if staffGroup.style.hideObjectOnPrint:
+            mxGroupNameDisplay = SubElement(mxPartGroup, 'group-name-display')
+            mxGroupNameDisplay.set('print-object', 'no')
         seta(staffGroup, mxPartGroup, 'group-abbreviation', 'abbreviation')
         mxGroupSymbol = seta(staffGroup, mxPartGroup, 'group-symbol', 'symbol')
         if mxGroupSymbol is not None:
@@ -2043,7 +2050,7 @@ class ScoreExporter(XMLExporterBase):
         return mxPartGroup
 
     def setIdentification(self):
-        # noinspection SpellCheckingInspection
+        # noinspection SpellCheckingInspection, PyShadowingNames
         '''
         Returns an identification object from self.scoreMetadata.  And appends to the score...
 
@@ -2119,6 +2126,7 @@ class ScoreExporter(XMLExporterBase):
         return mxId
 
     def metadataToMiscellaneous(self, md=None):
+        # noinspection PyShadowingNames
         '''
         Returns an mxMiscellaneous of information from metadata object md or
         from self.scoreMetadata if md is None.  If the mxMiscellaneous object
@@ -2160,6 +2168,7 @@ class ScoreExporter(XMLExporterBase):
         return mxMiscellaneous
 
     def setEncoding(self):
+        # noinspection PyShadowingNames
         '''
         Returns an encoding object that might have information about <supports> also.
         and appends to mxIdentification (if any)
@@ -2276,7 +2285,7 @@ class ScoreExporter(XMLExporterBase):
                 mxMovementTitle.text = defaults.title
 
     def contributorToXmlCreator(self, c):
-        # noinspection SpellCheckingInspection
+        # noinspection SpellCheckingInspection, PyShadowingNames
         '''
         Return a <creator> tag from a :class:`~music21.metadata.Contributor` object.
 
@@ -2306,11 +2315,14 @@ class PartExporter(XMLExporterBase):
     Object to convert one Part stream to a <part> tag on .parse()
     '''
 
-    def __init__(self, partObj=None, parent=None):
+    def __init__(self, partObj: Union[stream.Part, stream.Score, None] = None, parent=None):
         super().__init__()
+        # partObj can be a Score IF it has no parts within it.  But better to
+        # always have it be a Part
+
         if partObj is None:
             partObj = stream.Part()
-        self.stream = partObj
+        self.stream: Union[stream.Part, stream.Score] = partObj
         self.parent = parent  # ScoreExporter
         self.xmlRoot = Element('part')
 
@@ -2344,10 +2356,12 @@ class PartExporter(XMLExporterBase):
         self.instrumentSetup()
 
         self.xmlRoot.set('id', str(self.firstInstrumentObject.partId))
-        measureStream = self.stream.getElementsByClass('Stream').stream()  # suppose that everything
-        # below this is a measure
+        # Suppose that everything below this is a measure
+        measureStream = self.stream.getElementsByClass('Stream').stream()
         if not measureStream:
             self.fixupNotationFlat()
+            # Now we have measures
+            measureStream = self.stream.getElementsByClass('Stream').stream()
         else:
             self.fixupNotationMeasured(measureStream)
         # make sure that all instances of the same class have unique ids
@@ -2356,7 +2370,12 @@ class PartExporter(XMLExporterBase):
             self.addDividerComment('Measure ' + str(m.number))
             measureExporter = MeasureExporter(m, parent=self)
             measureExporter.spannerBundle = self.spannerBundle
-            mxMeasure = measureExporter.parse()
+            try:
+                mxMeasure = measureExporter.parse()
+            except MusicXMLExportException as e:
+                e.measureNumber = str(m.number)
+                e.partName = self.stream.partName
+                raise e
             self.xmlRoot.append(mxMeasure)
 
         return self.xmlRoot
@@ -2425,9 +2444,7 @@ class PartExporter(XMLExporterBase):
 
     def fixupNotationFlat(self):
         '''
-        Runs makeNotation on a flatStream...
-
-        TODO: test if this is redundant.
+        Runs makeNotation on a flatStream, such as one lacking measures.
         '''
         part = self.stream
         part.makeMutable()  # must mutate
@@ -2495,7 +2512,7 @@ class PartExporter(XMLExporterBase):
             stream.makeNotation.makeTupletBrackets(measureStream, inPlace=True)
 
         if not self.spannerBundle:
-            self.spannerBundle = spanner.SpannerBundle(measureStream.flat)
+            self.spannerBundle = measureStream.spannerBundle
 
     def getXmlScorePart(self):
         '''
@@ -2534,7 +2551,8 @@ class PartExporter(XMLExporterBase):
         # TODO: unbounded...
         i = self.firstInstrumentObject
 
-        if i.instrumentName is not None or i.instrumentAbbreviation is not None:
+        if (i.instrumentName is not None or i.instrumentAbbreviation is not None
+                or i.midiProgram is not None):
             mxScorePart.append(self.instrumentToXmlScoreInstrument(i))
 
         # TODO: midi-device
@@ -2544,7 +2562,7 @@ class PartExporter(XMLExporterBase):
         return mxScorePart
 
     def instrumentToXmlScoreInstrument(self, i):
-        # noinspection SpellCheckingInspection
+        # noinspection SpellCheckingInspection, PyShadowingNames
         '''
         Convert an :class:`~music21.instrument.Instrument` object to a
         <score-instrument> element and return it.
@@ -2583,6 +2601,7 @@ class PartExporter(XMLExporterBase):
         return mxScoreInstrument
 
     def instrumentToXmlMidiInstrument(self, i):
+        # noinspection PyShadowingNames
         '''
         Convert an instrument object to a <midi-instrument> tag and return the element
 
@@ -2663,7 +2682,8 @@ class MeasureExporter(XMLExporterBase):
         self.mxTranspose = None
         self.measureOffsetStart = 0.0
         self.offsetInMeasure = 0.0
-        self.currentVoiceId = None
+        self.currentVoiceId: Optional[int] = None
+        self.nextFreeVoiceNumber = 1
 
         self.rbSpanners = []  # repeatBracket spanners
 
@@ -2728,6 +2748,8 @@ class MeasureExporter(XMLExporterBase):
         If m is a 'Voice' class, we use the .id element to set self.currentVoiceId and then
         send a backup tag to go back to the beginning of the measure.
 
+        Note that if the .id is high enough to be an id(x) memory location, then a small
+        voice number is used instead.
         '''
         # TODO: fix mid-measure clef change with voices and part-staff in Schoenberg op. 19 no 2
         # staff 2, m. 6... -- placed at the beginning of the measure not at the appropriate place.
@@ -2735,7 +2757,14 @@ class MeasureExporter(XMLExporterBase):
         divisions = self.currentDivisions
         self.offsetInMeasure = 0.0
         if 'Voice' in m.classes:
-            voiceId = m.id
+            m: stream.Voice
+            if isinstance(m.id, int) and m.id < defaults.minIdNumberToConsiderMemoryLocation:
+                voiceId = m.id
+            elif isinstance(m.id, int):
+                voiceId = self.nextFreeVoiceNumber
+                self.nextFreeVoiceNumber += 1
+            else:
+                voiceId = m.id
         else:
             voiceId = None
 
@@ -2803,8 +2832,13 @@ class MeasureExporter(XMLExporterBase):
         if len(obj.duration.dotGroups) > 1:
             obj.duration.splitDotGroups(inPlace=True)
 
-        # split at durations...
-        if 'GeneralNote' in classes and obj.duration.type == 'complex':
+        # split at durations, if not a full-measure rest (e.g. whole rest in 9/8)
+        if 'GeneralNote' in classes and obj.duration.type == 'complex' and not (
+            'Rest' in classes and (
+                obj.fullMeasure in (True, 'always')
+                or (obj.fullMeasure == 'auto' and obj.duration == self.stream.barDuration)
+            )
+        ):
             objList = obj.splitAtDurations()
         else:
             objList = [obj]
@@ -3076,7 +3110,7 @@ class MeasureExporter(XMLExporterBase):
             else:
                 continue  # do not put a notation on mid-gliss notes.
 
-            _synchronizeIds(su, mxGlissando)
+            _synchronizeIds(mxGlissando, su)
             # placement???
             notations.append(mxGlissando)
 
@@ -3138,7 +3172,8 @@ class MeasureExporter(XMLExporterBase):
 
         return notations
 
-    def noteToXml(self, n, noteIndexInChord=0, chordParent=None):
+    def noteToXml(self, n: note.GeneralNote, noteIndexInChord=0, chordParent=None):
+        # noinspection PyShadowingNames
         '''
         Translate a music21 :class:`~music21.note.Note` or a Rest into a
         ElementTree, note element.
@@ -3150,6 +3185,7 @@ class MeasureExporter(XMLExporterBase):
         >>> n = note.Note('D#5')
         >>> n.quarterLength = 3
         >>> n.volume.velocityScalar = 0.5
+        >>> n.style.color = 'silver'
 
         >>> MEX = musicxml.m21ToXml.MeasureExporter()
         >>> len(MEX.xmlRoot)
@@ -3158,7 +3194,7 @@ class MeasureExporter(XMLExporterBase):
         >>> mxNote
         <Element 'note' at 0x10113cb38>
         >>> MEX.dump(mxNote)
-        <note dynamics="70.56">
+        <note color="#C0C0C0" dynamics="70.56">
           <pitch>
             <step>D</step>
             <alter>1</alter>
@@ -3168,6 +3204,7 @@ class MeasureExporter(XMLExporterBase):
           <type>half</type>
           <dot />
           <accidental>sharp</accidental>
+          <notehead color="#C0C0C0" parentheses="no">normal</notehead>
         </note>
         >>> len(MEX.xmlRoot)
         1
@@ -3207,9 +3244,9 @@ class MeasureExporter(XMLExporterBase):
         >>> n.articulations.append(articulations.Pizzicato())
         >>> mxNote = MEX.noteToXml(n)
         >>> MEX.dump(mxNote)
-        <note dynamics="70.56" pizzicato="yes">
+        <note color="#C0C0C0" dynamics="70.56" pizzicato="yes">
           ...
-          <notehead parentheses="no">diamond</notehead>
+          <notehead color="#C0C0C0" parentheses="no">diamond</notehead>
         </note>
 
         Notes with complex durations need to be simplified before coming here
@@ -3234,27 +3271,29 @@ class MeasureExporter(XMLExporterBase):
         addChordTag = (noteIndexInChord != 0)
         setb = _setAttributeFromAttribute
 
+        mxNote = Element('note')
+        chordOrN: note.GeneralNote
         if chordParent is None:
             chordOrN = n
         else:
             chordOrN = chordParent
+            # Ensure color is read from `n`, since only `chordOrN` is handled below
+            self.setColor(mxNote, n)
 
-        mxNote = Element('note')
         # self.setFont(mxNote, chordOrN)
-        self.setPrintStyle(mxNote, chordOrN)
+        self.setPrintStyle(mxNote, chordOrN)  # sets color
         # TODO: attr-group: printout -- replaces print-object, print-spacing below (3.1)
         # TODO: attr: print-leger -- musicxml 3.1
         if (chordOrN.isRest is False
                 and chordOrN.hasVolumeInformation()
                 and chordOrN.volume.velocityScalar is not None):
             vel = chordOrN.volume.velocityScalar * 100 * (127 / 90)
-            mxNote.set('dynamics', '{:.2f}'.format(vel))
+            mxNote.set('dynamics', f'{vel:.2f}')
 
         # TODO: attr: end-dynamics
         # TODO: attr: attack
         # TODO: attr: release
         # TODO: attr: time-only
-        self.setColor(mxNote, n)  # TODO(msc): is this redundant with setColor below?
         _synchronizeIds(mxNote, n)
 
         d = chordOrN.duration
@@ -3279,10 +3318,9 @@ class MeasureExporter(XMLExporterBase):
                 # TODO: make-time -- specifically not implemented for now.
 
             except AttributeError:
-                environLocal.warn('Duration set as Grace while not being a GraceDuration %s' % d)
+                environLocal.warn(f'Duration set as Grace while not being a GraceDuration {d}')
 
         # TODO: cue... / cue-grace
-        self.setColor(mxNote, chordOrN)
 
         self.setPrintObject(mxNote, n)
         if n.hasStyleInformation and n.style.hideObjectOnPrint is True:
@@ -3296,6 +3334,7 @@ class MeasureExporter(XMLExporterBase):
             SubElement(mxNote, 'chord')
 
         if hasattr(n, 'pitch'):
+            n: note.Note
             mxPitch = self.pitchToXml(n.pitch)
             mxNote.append(mxPitch)
         else:
@@ -3317,10 +3356,7 @@ class MeasureExporter(XMLExporterBase):
         self.setEditorial(mxNote, n)
         if self.currentVoiceId is not None:
             mxVoice = SubElement(mxNote, 'voice')
-            try:
-                mxVoice.text = str(self.currentVoiceId + 1)
-            except TypeError:
-                mxVoice.text = str(self.currentVoiceId)
+            mxVoice.text = str(self.currentVoiceId)
 
         if d.type != 'zero':
             mxType = Element('type')
@@ -3372,12 +3408,14 @@ class MeasureExporter(XMLExporterBase):
         if (addChordTag is False
                 and hasattr(chordOrN, 'stemDirection')
                 and chordOrN.stemDirection != 'unspecified'):
+            chordOrN: note.NotRest
             stemDirection = chordOrN.stemDirection
         # or if we are in a chord, but the sub-note has its own stem direction,
         # record that.
         elif (chordOrN is not n
                 and hasattr(n, 'stemDirection')
                 and n.stemDirection != 'unspecified'):
+            n: note.NotRest
             stemDirection = n.stemDirection
 
         if stemDirection is not None:
@@ -3400,11 +3438,10 @@ class MeasureExporter(XMLExporterBase):
         # beam
         if addChordTag is False:
             if hasattr(chordOrN, 'beams') and chordOrN.beams is not None:
+                chordOrN: note.NotRest
                 nBeamsList = self.beamsToXml(chordOrN.beams)
                 for mxB in nBeamsList:
                     mxNote.append(mxB)
-
-        # TODO: staff
 
         mxNotationsList = self.noteToNotations(n, noteIndexInChord, chordParent)
 
@@ -3430,9 +3467,10 @@ class MeasureExporter(XMLExporterBase):
         self.xmlRoot.append(mxNote)
         return mxNote
 
-    def restToXml(self, r):
+    def restToXml(self, r: note.Rest):
+        # noinspection PyShadowingNames
         '''
-        Convert a rest object to a <note> with a <rest> tag underneath it.
+        Convert a Rest object to a <note> with a <rest> tag underneath it.
 
         >>> MEX = musicxml.m21ToXml.MeasureExporter()
         >>> r = note.Rest(quarterLength=2.0)
@@ -3556,7 +3594,8 @@ class MeasureExporter(XMLExporterBase):
 
         return mxNote
 
-    def chordToXml(self, c):
+    def chordToXml(self, c: chord.Chord):
+        # noinspection PyShadowingNames
         '''
         Returns a list of <note> tags, all but the first with a <chord/> tag on them.
         And appends them to self.xmlRoot
@@ -3624,11 +3663,12 @@ class MeasureExporter(XMLExporterBase):
         >>> g = pitch.Pitch('g3')
         >>> h = note.Note('b4')
         >>> h.notehead = 'diamond'
+        >>> h.style.color = 'gold'
         >>> ch2 = chord.Chord([g, h])
         >>> ch2.quarterLength = 2.0
         >>> mxNoteList = MEX.chordToXml(ch2)
         >>> MEX.dump(mxNoteList[1])
-        <note>
+        <note color="#FFD700">
           <chord />
           <pitch>
             <step>B</step>
@@ -3636,7 +3676,7 @@ class MeasureExporter(XMLExporterBase):
           </pitch>
           <duration>20160</duration>
           <type>half</type>
-          <notehead parentheses="no">diamond</notehead>
+          <notehead color="#FFD700" parentheses="no">diamond</notehead>
         </note>
 
         Test articulations of chords with fingerings. Superfluous fingerings will be ignored.
@@ -3673,7 +3713,8 @@ class MeasureExporter(XMLExporterBase):
             mxNoteList.append(self.noteToXml(n, i, chordParent=c))
         return mxNoteList
 
-    def durationXml(self, dur):
+    def durationXml(self, dur: duration.Duration):
+        # noinspection PyShadowingNames
         '''
         Convert a duration.Duration object to a <duration> tag using self.currentDivisions
 
@@ -3688,7 +3729,8 @@ class MeasureExporter(XMLExporterBase):
         mxDuration.text = str(int(round(self.currentDivisions * dur.quarterLength)))
         return mxDuration
 
-    def pitchToXml(self, p):
+    def pitchToXml(self, p: pitch.Pitch):
+        # noinspection PyShadowingNames
         '''
         convert a pitch to xml... does not create the <accidental> tag...
 
@@ -3710,7 +3752,7 @@ class MeasureExporter(XMLExporterBase):
         _setTagTextFromAttribute(p, mxPitch, 'octave', 'implicitOctave')
         return mxPitch
 
-    def fretNoteToXml(self, fretNote):
+    def fretNoteToXml(self, fretNote) -> Element:
         '''
         Converts a FretNote Object to MusicXML readable format.
 
@@ -3720,7 +3762,7 @@ class MeasureExporter(XMLExporterBase):
         must be converted to
         'Frame-Note'
 
-        >>> fn = tablature.FretNote(string = 3, fret = 1, fingering = 2)
+        >>> fn = tablature.FretNote(string=3, fret=1, fingering=2)
         >>> MEX = musicxml.m21ToXml.MeasureExporter()
         >>> MEXFretNote = MEX.fretNoteToXml(fn)
         >>> MEX.dump(MEXFretNote)
@@ -3732,7 +3774,7 @@ class MeasureExporter(XMLExporterBase):
 
         Without fingering!
 
-        >>> fn2 = tablature.FretNote(string = 5, fret = 2)
+        >>> fn2 = tablature.FretNote(string=5, fret=2)
         >>> MEX = musicxml.m21ToXml.MeasureExporter()
         >>> MEXOtherFretNote = MEX.fretNoteToXml(fn2)
         >>> MEX.dump(MEXOtherFretNote)
@@ -3741,16 +3783,16 @@ class MeasureExporter(XMLExporterBase):
             <fret>2</fret>
         </frame-note>
         '''
-        FretNoteMX = Element('frame-note')
-        _setTagTextFromAttribute(fretNote, FretNoteMX, 'string')
-        _setTagTextFromAttribute(fretNote, FretNoteMX, 'fret')
+        mxFrameNote = Element('frame-note')
+        _setTagTextFromAttribute(fretNote, mxFrameNote, 'string')
+        _setTagTextFromAttribute(fretNote, mxFrameNote, 'fret')
 
         if fretNote.fingering is not None:
-            _setTagTextFromAttribute(fretNote, FretNoteMX, 'fingering')
+            _setTagTextFromAttribute(fretNote, mxFrameNote, 'fingering')
 
-        return FretNoteMX
+        return mxFrameNote
 
-    def fretBoardToXml(self, fretBoard):
+    def fretBoardToXml(self, fretBoard) -> Optional[Element]:
         '''
         The ChordWithFretBoard Object combines chord symbols with FretNote objects.
 
@@ -3802,7 +3844,7 @@ class MeasureExporter(XMLExporterBase):
 
         return mxFrame
 
-    def chordWithFretBoardToXml(self, cwf):
+    def chordWithFretBoardToXml(self, cwf) -> Element:
         '''
         Deals with both chords and frets.
         Generate harmony and append xml to it.
@@ -3815,7 +3857,7 @@ class MeasureExporter(XMLExporterBase):
 
         return mxHarmony
 
-    def tupletToTimeModification(self, tup):
+    def tupletToTimeModification(self, tup) -> Element:
         '''
         >>> t = duration.Tuplet(11, 8)
         >>> MEX = musicxml.m21ToXml.MeasureExporter()
@@ -3850,7 +3892,12 @@ class MeasureExporter(XMLExporterBase):
 
         return mxTimeModification
 
-    def dealWithNotehead(self, mxNote, n, chordParent=None):
+    def dealWithNotehead(
+        self,
+        mxNote: Element,
+        n: note.GeneralNote,
+        chordParent: Optional[chord.Chord] = None
+    ) -> None:
         '''
         Determine if an <notehead> element needs to be added to this <note>
         element (mxNote) and if it does then get the <notehead> element from
@@ -3867,6 +3914,7 @@ class MeasureExporter(XMLExporterBase):
                  or n.noteheadParenthesis
                  or n.noteheadFill is not None
                  or (n.hasStyleInformation and n.style.color not in (None, '')))):
+            n: note.NotRest
             foundANotehead = True
             mxNotehead = self.noteheadToXml(n)
             mxNote.append(mxNotehead)
@@ -3880,11 +3928,12 @@ class MeasureExporter(XMLExporterBase):
                 mxNotehead = self.noteheadToXml(chordParent)
                 mxNote.append(mxNotehead)
 
-    def noteheadToXml(self, n):
+    def noteheadToXml(self, n: note.NotRest) -> Element:
+        # noinspection PyShadowingNames
         '''
-        Translate a music21 :class:`~music21.note.Note` object
+        Translate a music21 :class:`~music21.note.NotRest` object
+        such as a Note, or Unpitched object, or Chord
         into a <notehead> tag
-
 
         >>> n = note.Note('C#4')
         >>> n.notehead = 'diamond'
@@ -4018,6 +4067,7 @@ class MeasureExporter(XMLExporterBase):
         return notations
 
     def tieToXmlTie(self, t):
+        # noinspection PyShadowingNames
         '''
         returns a list of ties from a Tie object.
 
@@ -4049,6 +4099,7 @@ class MeasureExporter(XMLExporterBase):
         return mxTieList
 
     def tieToXmlTied(self, t):
+        # noinspection PyShadowingNames
         '''
         In musicxml, a tie is represented in sound
         by the tie tag (near the pitch object), and
@@ -4310,6 +4361,7 @@ class MeasureExporter(XMLExporterBase):
         return mx
 
     def articulationToXmlArticulation(self, articulationMark):
+        # noinspection PyShadowingNames
         '''
         Returns a class (mxArticulationMark) that represents the
         MusicXML structure of an articulation mark.
@@ -4394,6 +4446,7 @@ class MeasureExporter(XMLExporterBase):
     #     pass
 
     def articulationToXmlTechnical(self, articulationMark):
+        # noinspection PyShadowingNames, SpellCheckingInspection
         '''
         Returns a tag that represents the
         MusicXML structure of an articulation mark that is primarily a TechnicalIndication.
@@ -4413,6 +4466,22 @@ class MeasureExporter(XMLExporterBase):
         >>> mxFingering = MEX.articulationToXmlTechnical(f)
         >>> MEX.dump(mxFingering)
         <fingering alternate="no" substitution="yes">4</fingering>
+
+        Technical marks too specific to express in musicxml just get other-technical.
+
+        >>> g = articulations.OrganIndication()
+        >>> g.displayText = 'unda maris'
+        >>> mxOther = MEX.articulationToXmlTechnical(g)
+        >>> MEX.dump(mxOther)
+        <other-technical>unda maris</other-technical>
+
+        Same with technical marks not yet supported.
+        TODO: support HammerOn, PullOff, Bend, Hole, Arrow.
+
+        >>> h = articulations.HammerOn()
+        >>> mxOther = MEX.articulationToXmlTechnical(h)
+        >>> MEX.dump(mxOther)
+        <other-technical />
         '''
         # these technical have extra information
         # TODO: hammer-on
@@ -4426,8 +4495,12 @@ class MeasureExporter(XMLExporterBase):
                 musicXMLTechnicalName = xmlObjects.TECHNICAL_MARKS_REV[c]
                 break
         if musicXMLTechnicalName is None:
-            raise MusicXMLExportException(
-                'Cannot translate technical indication %s to musicxml' % articulationMark)
+            musicXMLTechnicalName = 'other-technical'
+
+        # TODO: support additional technical marks listed above
+        if musicXMLTechnicalName in ('hammer-on', 'pull-off', 'bend', 'hole', 'arrow'):
+            musicXMLTechnicalName = 'other-technical'
+
         mxTechnicalMark = Element(musicXMLTechnicalName)
         if articulationMark.placement is not None:
             mxTechnicalMark.set('placement', articulationMark.placement)
@@ -4456,12 +4529,17 @@ class MeasureExporter(XMLExporterBase):
         if musicXMLTechnicalName == 'harmonic':
             self.setHarmonic(mxTechnicalMark, articulationMark)
 
+        if (musicXMLTechnicalName == 'other-technical'
+                and articulationMark.displayText is not None):
+            mxTechnicalMark.text = articulationMark.displayText
+
         self.setPrintStyle(mxTechnicalMark, articulationMark)
         # mxArticulations.append(mxArticulationMark)
         return mxTechnicalMark
 
     @staticmethod
     def setHarmonic(mxh, harm):
+        # noinspection PyShadowingNames
         '''
         Sets the artificial or natural tag (or no tag) and
         zero or one of base-pitch, sounding-pitch, touching-pitch
@@ -4470,11 +4548,11 @@ class MeasureExporter(XMLExporterBase):
 
         >>> MEXClass = musicxml.m21ToXml.MeasureExporter
 
-        >>> a = articulations.Harmonic()
+        >>> a = articulations.StringHarmonic()
         >>> a.harmonicType = 'artificial'
         >>> a.pitchType = 'sounding'
 
-        >>> from music21.musicxml.m21ToXml import Element
+        >>> from xml.etree.ElementTree import Element
         >>> mxh = Element('harmonic')
 
         >>> MEXClass.setHarmonic(mxh, a)
@@ -4483,7 +4561,19 @@ class MeasureExporter(XMLExporterBase):
           <artificial />
           <sounding-pitch />
         </harmonic>
+
+        :class:`~music21.articulations.Harmonic` is probably too general for most uses,
+        but if you use it, you get a harmonic tag with no details:
+
+        >>> b = articulations.Harmonic()
+        >>> mxh2 = Element('harmonic')
+        >>> MEXClass.setHarmonic(mxh2, b)
+        >>> MEXClass.dump(mxh2)
+        <harmonic />
         '''
+        if not hasattr(harm, 'harmonicType'):
+            return
+
         if harm.harmonicType == 'artificial':
             SubElement(mxh, 'artificial')
         elif harm.harmonicType == 'natural':
@@ -4499,6 +4589,29 @@ class MeasureExporter(XMLExporterBase):
     def noChordToXml(self, cs):
         '''
         Convert a NoChord object to an mxHarmony object.
+
+        Expected attributes of the NoChord object:
+
+        >>> nc = harmony.NoChord()
+        >>> nc.chordKind
+        'none'
+
+        >>> nc.chordKindStr
+        'N.C.'
+
+        Other values may not export:
+
+        >>> nc.chordKindStr = ''
+        >>> nc.write()
+        Traceback (most recent call last):
+        music21.musicxml.xmlObjects.MusicXMLExportException:
+             In part (None), measure (1): NoChord object's chordKindStr must be non-empty
+
+        >>> nc.chordKind = None
+        >>> nc.write()
+        Traceback (most recent call last):
+        music21.musicxml.xmlObjects.MusicXMLExportException:
+             In part (None), measure (1): NoChord object's chordKind must be 'none'
 
         '''
         if cs.writeAsChord is True:
@@ -4518,9 +4631,11 @@ class MeasureExporter(XMLExporterBase):
 
         mxKind = SubElement(mxHarmony, 'kind')
         cKind = cs.chordKind
-        assert cs.chordKind == 'none'
+        if cs.chordKind != 'none':
+            raise MusicXMLExportException("NoChord object's chordKind must be 'none'")
         mxKind.text = str(cKind)
-        assert cs.chordKindStr not in (None, '')
+        if cs.chordKindStr in (None, ''):
+            raise MusicXMLExportException("NoChord object's chordKindStr must be non-empty")
         mxKind.set('text', cs.chordKindStr)
 
         self.setOffsetOptional(cs, mxHarmony)
@@ -4530,6 +4645,7 @@ class MeasureExporter(XMLExporterBase):
         return mxHarmony
 
     def chordSymbolToXml(self, cs):
+        # noinspection PyShadowingNames
         '''
         Convert a ChordSymbol object to an mxHarmony object.
 
@@ -4613,7 +4729,7 @@ class MeasureExporter(XMLExporterBase):
           <kind>suspended-fourth</kind>
           <degree>
             <degree-value>9</degree-value>
-            <degree-alter />
+            <degree-alter>0</degree-alter>
             <degree-type>add</degree-type>
           </degree>
         </harmony>
@@ -4729,11 +4845,10 @@ class MeasureExporter(XMLExporterBase):
             mxDegreeValue = SubElement(mxDegree, 'degree-value')
             mxDegreeValue.text = str(hd.degree)
             mxDegreeAlter = SubElement(mxDegree, 'degree-alter')
-            if hd.interval is not None:
-                # will return -1 for '-a1'
-                mxDegreeAlter.text = str(hd.interval.chromatic.directed)
-                # TODO: attrGroup: print-style
-                # TODO: attr: plus-minus (yes, no)
+            # will return -1 for '-a1'
+            mxDegreeAlter.text = str(hd.interval.chromatic.directed) if hd.interval else '0'
+            # TODO: attrGroup: print-style
+            # TODO: attr: plus-minus (yes, no)
             mxDegreeType = SubElement(mxDegree, 'degree-type')
             mxDegreeType.text = str(hd.modType)
             # TODO: attr: text -- alternate display
@@ -4742,7 +4857,7 @@ class MeasureExporter(XMLExporterBase):
         # TODO: frame -- fretboard
         self.setOffsetOptional(cs, mxHarmony)
         self.setEditorial(mxHarmony, cs)
-        # TODO: staff
+        # staff: see joinPartStaffs()
 
         self.xmlRoot.append(mxHarmony)
         return mxHarmony
@@ -4782,6 +4897,7 @@ class MeasureExporter(XMLExporterBase):
         return mxDirection
 
     def dynamicToXml(self, d):
+        # noinspection PyShadowingNames
         '''
         return a nested tag:
         <direction><direction-type><dynamic><ff>
@@ -4842,7 +4958,7 @@ class MeasureExporter(XMLExporterBase):
         self.setOffsetOptional(d, mxDirection)
         self.setEditorial(mxDirection, d)
         # TODO: voice
-        # TODO: staff
+        # staff: see joinPartStaffs()
 
         # sound
         vS = d.volumeScalar
@@ -4930,9 +5046,11 @@ class MeasureExporter(XMLExporterBase):
             return mxDirection
         else:
             codaTe = coda.getTextExpression()
+            codaTe.offset = coda.offset
             return self.textExpressionToXml(codaTe)
 
     def tempoIndicationToXml(self, ti):
+        # noinspection PyShadowingNames
         '''
         returns a <direction> tag for a single tempo indication.
 
@@ -4960,7 +5078,7 @@ class MeasureExporter(XMLExporterBase):
         >>> MEX.dump(MEX.xmlRoot.findall('direction')[1])
         <direction>
           <direction-type>
-            <words default-y="45" enclosure="none" font-style="bold"
+            <words default-y="45" enclosure="none" font-weight="bold"
                 justify="left">slow</words>
           </direction-type>
         </direction>
@@ -5097,11 +5215,13 @@ class MeasureExporter(XMLExporterBase):
         if 'MetronomeMark' in ti.classes:
             if ti.getTextExpression(returnImplicit=False) is not None:
                 te = ti.getTextExpression(returnImplicit=False)
+                te.offset = ti.offset
                 unused_mxDirectionText = self.textExpressionToXml(te)
 
         return mxDirection
 
     def rehearsalMarkToXml(self, rm):
+        # noinspection PyShadowingNames
         '''
         Convert a RehearsalMark object to a MusicXML <direction> tag with a <rehearsal> tag
         inside it.
@@ -5137,6 +5257,7 @@ class MeasureExporter(XMLExporterBase):
             mxWords.text = str(te.content)
         elif hasattr(teOrRe, 'getText'):  # RepeatExpression
             te = teOrRe.getTextExpression()
+            te.offset = teOrRe.offset
             mxWords.text = str(te.content)
         else:
             raise MusicXMLExportException('teOrRe must be a TextExpression or RepeatExpression')
@@ -5149,6 +5270,7 @@ class MeasureExporter(XMLExporterBase):
         return mxDirection
 
     def wrapObjectInAttributes(self, objectToWrap, methodToMx):
+        # noinspection PyShadowingNames
         '''
         given a Clef, KeySignature, or TimeSignature which is in .elements and not m.clef,
         etc. insert it in self.xmlRoot as
@@ -5194,7 +5316,7 @@ class MeasureExporter(XMLExporterBase):
     # -----------------------------
     # note helpers...
 
-    def lyricToXml(self, l):
+    def lyricToXml(self, ly: note.Lyric):
         '''
         Translate a music21 :class:`~music21.note.Lyric` object
         to a <lyric> tag.
@@ -5202,35 +5324,47 @@ class MeasureExporter(XMLExporterBase):
         Lyrics have attribute list %justify, %position, %placement, %color, %print-object
         '''
         mxLyric = Element('lyric')
-        _setTagTextFromAttribute(l, mxLyric, 'syllabic')
-        _setTagTextFromAttribute(l, mxLyric, 'text', forceEmpty=True)
-        # TODO: elision
-        # TODO: more syllabic
-        # TODO: more text
+        if not ly.isComposite:
+            _setTagTextFromAttribute(ly, mxLyric, 'syllabic')
+            _setTagTextFromAttribute(ly, mxLyric, 'text', forceEmpty=True)
+        else:
+            # composite must have at least one component
+            for i, component in enumerate(ly.components):
+                if component.syllabic == 'composite':
+                    # skip doubly nested lyrics -- why, oh, why would you do that!
+                    continue
+                if i >= 1:
+                    mxElision = SubElement(mxLyric, 'elision')
+                    if component.elisionBefore:
+                        mxElision.text = component.elisionBefore
+                _setTagTextFromAttribute(component, mxLyric, 'syllabic')
+                _setTagTextFromAttribute(component, mxLyric, 'text', forceEmpty=True)
+
         # TODO: extend
         # TODO: laughing
         # TODO: humming
         # TODO: end-line
         # TODO: end-paragraph
         # TODO: editorial
-        if l.identifier is not None:
-            mxLyric.set('name', str(l.identifier))
+        if ly.identifier is not None:
+            mxLyric.set('name', str(ly.identifier))
 
-        if l.number is not None:
-            mxLyric.set('number', str(l.number))
-        elif l.identifier is not None:
-            mxLyric.set('number', str(l.identifier))
+        if ly.number is not None:
+            mxLyric.set('number', str(ly.number))
+        elif ly.identifier is not None:
+            mxLyric.set('number', str(ly.identifier))
 
-        self.setStyleAttributes(mxLyric, l,
+        self.setStyleAttributes(mxLyric, ly,
                                 ('justify', 'placement'),
                                 ('justify', 'placement'))
-        self.setPrintObject(mxLyric, l)
+        self.setPrintObject(mxLyric, ly)
 
-        self.setColor(mxLyric, l)
-        self.setPosition(mxLyric, l)
+        self.setColor(mxLyric, ly)
+        self.setPosition(mxLyric, ly)
         return mxLyric
 
     def beamsToXml(self, beams):
+        # noinspection PyShadowingNames
         '''
         Returns a list of <beam> tags
         from a :class:`~music21.beam.Beams` object
@@ -5293,13 +5427,14 @@ class MeasureExporter(XMLExporterBase):
         >>> a.direction = None
         >>> b = MEX.beamToXml(a)
         Traceback (most recent call last):
-        music21.musicxml.m21ToXml.MusicXMLExportException: partial beam defined
+        music21.musicxml.xmlObjects.MusicXMLExportException: partial beam defined
             without a proper direction set (set to None)
 
         >>> a.type = 'crazy'
         >>> b = MEX.beamToXml(a)
         Traceback (most recent call last):
-        music21.musicxml.m21ToXml.MusicXMLExportException: unexpected beam type encountered (crazy)
+        music21.musicxml.xmlObjects.MusicXMLExportException: unexpected beam type
+            encountered (crazy)
         '''
         mxBeam = Element('beam')
         _synchronizeIds(mxBeam, beamObject)
@@ -5320,7 +5455,7 @@ class MeasureExporter(XMLExporterBase):
                     beamObject.direction)
         else:
             raise MusicXMLExportException(
-                'unexpected beam type encountered (%s)' % beamObject.type
+                f'unexpected beam type encountered ({beamObject.type})'
             )
 
         mxBeam.set('number', str(beamObject.number))
@@ -5397,7 +5532,14 @@ class MeasureExporter(XMLExporterBase):
                 endingType = 'start'
             else:
                 endingType = 'stop'
-            mxEnding.set('number', str(self.rbSpanners[0].getNumberList()[0]))
+            numberList = self.rbSpanners[0].getNumberList()
+            numberStr = str(numberList[0])
+            # 0 is not a valid "ending-number"
+            if numberStr == '0':
+                numberStr = ''
+            for num in numberList[1:]:
+                numberStr += ',' + str(num)  # comma-separated ending numbers
+            mxEnding.set('number', numberStr)
             mxEnding.set('type', endingType)
             mxBarline.append(mxEnding)  # make sure it is after fermata but before repeat.
 
@@ -5412,6 +5554,7 @@ class MeasureExporter(XMLExporterBase):
         return mxBarline
 
     def barlineToXml(self, barObject):
+        # noinspection PyShadowingNames
         '''
         Translate a music21 bar.Bar object to an mxBar
         while making two substitutions: double -> light-light
@@ -5441,6 +5584,7 @@ class MeasureExporter(XMLExporterBase):
         return mxBarline
 
     def repeatToXml(self, r):
+        # noinspection PyShadowingNames
         '''
         returns a <repeat> tag from a barline object.
 
@@ -5499,7 +5643,7 @@ class MeasureExporter(XMLExporterBase):
             if smts:
                 mxAttributes.append(self.timeSignatureToXml(smts[0]))
 
-            # TODO: staves (piano staff...)
+            # For staves, see joinPartStaffs()
             # TODO: part-symbol
             # TODO: instruments
             if m.clef is not None:
@@ -5561,28 +5705,38 @@ class MeasureExporter(XMLExporterBase):
         Convert a :class:`~music21.layout.StaffLayout` object to a
         <staff-details> element.
 
-        <staff-type> is not yet supported.
-
         >>> MEX = musicxml.m21ToXml.MeasureExporter()
         >>> sl = layout.StaffLayout()
         >>> sl.staffLines = 3  # tenor drums?
+        >>> sl.staffType = stream.enums.StaffType.CUE
         >>> sl.hidden = True
         >>> mxDetails = MEX.staffLayoutToXmlStaffDetails(sl)
         >>> MEX.dump(mxDetails)
         <staff-details print-object="no">
+              <staff-type>cue</staff-type>
               <staff-lines>3</staff-lines>
         </staff-details>
         '''
+        # TODO: number (bigger issue)
+        # TODO: show-frets
+        # TODO: print-spacing
         mxStaffDetails = Element('staff-details')
-        # TODO: staff-type
-        if staffLayout.staffLines is not None:
-            mxStaffLines = SubElement(mxStaffDetails, 'staff-lines')
-            mxStaffLines.text = str(staffLayout.staffLines)
-
         if staffLayout.hidden is True:
             mxStaffDetails.set('print-object', 'no')
         else:
             mxStaffDetails.set('print-object', 'yes')
+
+        StaffType = stream.enums.StaffType
+        if staffLayout.staffType not in (StaffType.REGULAR, StaffType.OTHER):
+            mxStaffType = SubElement(mxStaffDetails, 'staff-type')
+            mxStaffType.text = staffLayout.staffType.value
+        if staffLayout.staffLines is not None:
+            mxStaffLines = SubElement(mxStaffDetails, 'staff-lines')
+            mxStaffLines.text = str(staffLayout.staffLines)
+
+        # TODO: staff-tuning
+        # TODO: capo
+        # TODO: staff-size
         return mxStaffDetails
 
     def timeSignatureToXml(self, ts):
@@ -5654,7 +5808,7 @@ class MeasureExporter(XMLExporterBase):
             return mxTime
 
         # always get a flat version to display any subdivisions created
-        fList = [(mt.numerator, mt.denominator) for mt in ts.displaySequence.flat._partition]
+        fList = [(mt.numerator, mt.denominator) for mt in ts.displaySequence.flat]
         if ts.summedNumerator:
             # this will try to reduce any common denominators into
             # a common group
@@ -5684,6 +5838,7 @@ class MeasureExporter(XMLExporterBase):
         return mxTime
 
     def keySignatureToXml(self, keyOrKeySignature):
+        # noinspection PyShadowingNames
         '''
         returns a key tag from a music21
         key.KeySignature or key.Key object
@@ -5707,7 +5862,7 @@ class MeasureExporter(XMLExporterBase):
           <mode>major</mode>
         </key>
 
-        >>> ksNonTrad = key.KeySignature()
+        >>> ksNonTrad = key.KeySignature(sharps=None)
         >>> ksNonTrad.alteredPitches = ['C#', 'E-4']
         >>> ksNonTrad
         <music21.key.KeySignature of pitches: [C#, E-4]>
@@ -5801,10 +5956,9 @@ class MeasureExporter(XMLExporterBase):
         mxClef = Element('clef')
         _synchronizeIds(mxClef, clefObj)
 
-        # TODO: attr: number
         self.setPrintStyle(mxClef, clefObj)
         # TODO: attr: print-object
-        # TODO: attr: number (staff number)
+        # For attr: number, see joinPartStaffs()
         # TODO: attr: additional
         # TODO: attr: size
         # TODO: attr: after-barline
@@ -5822,6 +5976,7 @@ class MeasureExporter(XMLExporterBase):
         return mxClef
 
     def intervalToXmlTranspose(self, i=None):
+        # noinspection PyShadowingNames
         '''
         >>> ME = musicxml.m21ToXml.MeasureExporter()
         >>> i = interval.Interval('P5')
@@ -5971,8 +6126,8 @@ class MeasureExporter(XMLExporterBase):
         '''
         Makes a set of spanners from repeat brackets
         '''
-        self.rbSpanners = self.spannerBundle.getBySpannedElement(
-            self.stream).getByClass('RepeatBracket')
+        spannersOnStream = self.spannerBundle.getBySpannedElement(self.stream)
+        self.rbSpanners = spannersOnStream.getByClass('RepeatBracket')
 
     def setTranspose(self):
         '''
@@ -5998,7 +6153,7 @@ class MeasureExporter(XMLExporterBase):
         if not instSubStream:
             return None
 
-        instSubObj = instSubStream[0]
+        instSubObj = instSubStream.first()
         if instSubObj.transposition is None:
             return None
         self.transpositionInterval = instSubObj.transposition
@@ -6026,8 +6181,6 @@ def indent(elem, level=0):
 
 
 class Test(unittest.TestCase):
-    def runTest(self):
-        pass
 
     def getXml(self, obj):
         gex = GeneralObjectExporter()
@@ -6038,11 +6191,21 @@ class Test(unittest.TestCase):
     def getET(self, obj):
         SX = ScoreExporter(obj)
         mxScore = SX.parse()
-        SX.indent(mxScore)
+        helpers.indent(mxScore)
         return mxScore
 
-    def testBasic(self):
-        pass
+    def testExceptionMessage(self):
+        s = stream.Score()
+        p = stream.Part()
+        p.partName = 'Offstage Trumpet'
+        p.insert(note.Note(quarterLength=(4 / 2048)))
+        s.insert(p)
+
+        msg = 'In part (Offstage Trumpet), measure (1): '
+        msg += 'Cannot convert "2048th" duration to MusicXML (too short).'
+        with self.assertRaises(MusicXMLExportException) as error:
+            s.write()
+        self.assertEqual(str(error.exception), msg)
 
     def testSpannersWrite(self):
         from music21 import converter
@@ -6052,21 +6215,123 @@ class Test(unittest.TestCase):
         d = listNotes[1]
         sl1 = spanner.Slur([c, d])
         p.insert(0.0, sl1)
-        # p.getElementsByClass('Measure')[0].insert(0.0, sl1)
 
         f = listNotes[3]
         g = listNotes[4]
         a = listNotes[5]
         sl2 = spanner.Slur([f, g, a])
         p.insert(0.0, sl2)
-        # p.getElementsByClass('Measure')[0].insert(0.0, sl2)
 
         c2 = listNotes[6]
         g2 = listNotes[-1]
         sl3 = spanner.Slur([c2, g2])
         p.insert(0.0, sl3)
-        # p.getElementsByClass('Measure')[1].insert(0.0, sl3)
-        self.assertEqual(self.getXml(p).count(u'<slur '), 6)
+        self.assertEqual(self.getXml(p).count('<slur '), 6)
+
+    def testSpannersWritePartStaffs(self):
+        '''
+        Test that spanners are gathered on the PartStaffs that need them.
+
+        Multi-staff instruments are separated on import into distinct PartStaff
+        objects, where usually all the spanners will remain on the first object.
+        '''
+        import re
+        from music21 import converter, dynamics, layout
+        xmlDir = common.getSourceFilePath() / 'musicxml' / 'lilypondTestSuite'
+        s = converter.parse(xmlDir / '43e-Multistaff-ClefDynamics.xml')
+
+        # StaffGroup spanner stored on the score
+        self.assertEqual(len(s.spanners), 1)
+        self.assertIsInstance(s.spanners[0], layout.StaffGroup)
+
+        # Crescendo in LH actually stored in first PartStaff object
+        self.assertEqual(len(s.parts[0].spanners), 1)
+        self.assertEqual(len(s.parts[1].spanners), 0)
+        self.assertIsInstance(s.parts[0].spanners[0], dynamics.Crescendo)
+
+        # Will it be found by coreGatherMissingSpanners without being inserted?
+        s.makeNotation(inPlace=True)
+        self.assertEqual(len(s.parts[1].spanners), 0)
+
+        # and written after the backup tag, i.e. on the LH?
+        xmlOut = self.getXml(s)
+        xmlAfterFirstBackup = xmlOut.split('</backup>\n')[1]
+
+        def stripInnerSpaces(txt):
+            return re.sub(r'\s+', ' ', txt)
+
+        self.assertIn(
+            stripInnerSpaces(
+                ''' <direction placement="below">
+                        <direction-type>
+                            <wedge number="1" spread="0" type="crescendo" />
+                        </direction-type>
+                        <staff>2</staff>
+                    </direction>'''),
+            stripInnerSpaces(xmlAfterFirstBackup)
+        )
+
+    def testLowVoiceNumbers(self):
+        n = note.Note()
+        v1 = stream.Voice([n])
+        m = stream.Measure([v1])
+        xmlOut = self.getXml(m)
+        self.assertIn('<voice>1</voice>', xmlOut)
+        n2 = note.Note()
+        v2 = stream.Voice([n2])
+        m.insert(0, v2)
+        xmlOut = self.getXml(m)
+        self.assertIn('<voice>1</voice>', xmlOut)
+        self.assertIn('<voice>2</voice>', xmlOut)
+        v1.id = 234
+        xmlOut = self.getXml(m)
+        self.assertIn('<voice>234</voice>', xmlOut)
+        self.assertIn('<voice>1</voice>', xmlOut)  # is v2 now!
+        v2.id = 'hello'
+        xmlOut = self.getXml(m)
+        self.assertIn('<voice>hello</voice>', xmlOut)
+
+    def testCompositeLyrics(self):
+        from music21 import converter
+
+        xmlDir = common.getSourceFilePath() / 'musicxml' / 'lilypondTestSuite'
+        fp = xmlDir / '61l-Lyrics-Elisions-Syllables.xml'
+        s = converter.parse(fp)
+        notes = list(s.flat.notes)
+        n1 = notes[0]
+        xmlOut = self.getXml(n1)
+        self.assertIn('<lyric name="1" number="1">', xmlOut)
+        self.assertIn('<syllabic>begin</syllabic>', xmlOut)
+        self.assertIn('<text>a</text>', xmlOut)
+
+        tree = self.getET(s)
+        mxLyrics = tree.findall('part/measure/note/lyric')
+        ly0 = mxLyrics[0]
+        self.assertEqual(ly0.get('number'), '1')
+        self.assertEqual(len(ly0), 2)
+        self.assertEqual(ly0[0].tag, 'syllabic')
+        self.assertEqual(ly0[1].tag, 'text')
+        # contents already checked above
+
+        ly1 = mxLyrics[1]
+        self.assertEqual(len(ly1), 5)
+        tags = [child.tag for child in ly1]
+        self.assertEqual(tags, ['syllabic', 'text', 'elision', 'syllabic', 'text'])
+        self.assertEqual(ly1.find('elision').text, ' ')
+        self.assertEqual(ly1.findall('syllabic')[0].text, 'middle')
+        self.assertEqual(ly1.findall('text')[0].text, 'b')
+        self.assertEqual(ly1.findall('syllabic')[1].text, 'middle')
+        self.assertEqual(ly1.findall('text')[1].text, 'c')
+
+        ly2 = mxLyrics[2]
+        self.assertEqual(len(ly2), 5)
+        tags = [child.tag for child in ly2]
+        self.assertEqual(tags, ['syllabic', 'text', 'elision', 'syllabic', 'text'])
+        self.assertIsNone(ly2.find('elision').text)
+        self.assertEqual(ly2.findall('syllabic')[0].text, 'middle')
+        self.assertEqual(ly2.findall('text')[0].text, 'd')
+        self.assertEqual(ly2.findall('syllabic')[1].text, 'end')
+        self.assertEqual(ly2.findall('text')[1].text, 'e')
 
     def testExportNC(self):
         from music21 import harmony
@@ -6111,10 +6376,97 @@ class Test(unittest.TestCase):
         self.assertEqual(1, self.getXml(s).count(u'<kind '
                                                  u'text="No Chord">none</kind>'))
 
+    def testSetPartsAndRefStreamMeasure(self):
+        from music21 import converter
+        p = converter.parse("tinynotation: 4/4 c1 d1")
+        sx = ScoreExporter(p)  # substreams are measures
+        sx.setPartsAndRefStream()
+        measuresAtOffsetZero = [m for m in p if m.offset == 0]
+        self.assertSequenceEqual(measuresAtOffsetZero, p.elements[:1])
+
+    def testFromScoreNoParts(self):
+        s = stream.Score()
+        s.append(meter.TimeSignature('1/4'))
+        s.append(note.Note())
+        s.append(note.Note())
+        gex = GeneralObjectExporter(s)
+        tree = ET.fromstring(gex.parse().decode('utf-8'))
+        # Assert no gaps in stream
+        self.assertSequenceEqual(tree.findall('.//forward'), [])
+
+    def testFromScoreNoMeasures(self):
+        s = stream.Score()
+        s.append(note.Note())
+        scExporter = ScoreExporter(s)
+        tree = scExporter.parse()
+        # Measures should have been made
+        self.assertIsNotNone(tree.find('.//measure'))
+
+    def testMidiInstrumentNoName(self):
+        from music21 import converter, instrument
+
+        i = instrument.Instrument()
+        i.midiProgram = 42
+        s = converter.parse('tinyNotation: c1')
+        s.measure(1).insert(i)
+        scExporter = ScoreExporter(s)
+
+        tree = scExporter.parse()
+        mxScoreInstrument = tree.findall('.//score-instrument')[0]
+        mxMidiInstrument = tree.findall('.//midi-instrument')[0]
+        self.assertEqual(mxScoreInstrument.get('id'), mxMidiInstrument.get('id'))
+
+    def testMultiDigitEndingsWrite(self):
+        from music21 import converter
+        from music21.musicxml import testPrimitive
+
+        # Relevant barlines:
+        # Measure 2, left barline: <ending number="1,2" type="start"/>
+        # Measure 2, right barline: <ending number="1,2" type="stop"/>
+        # Measure 3, left barline: <ending number="3" type="start"/>
+        # Measure 3, right barline: <ending number="3" type="stop"/>
+        s = converter.parse(testPrimitive.multiDigitEnding)
+        x = self.getET(s)
+        endings = x.findall('.//ending')
+        self.assertEqual([e.get('number') for e in endings], ['1,2', '1,2', '3', '3'])
+
+        # m21 represents lack of bracket numbers as 0; musicxml uses ''
+        s.parts[0].getElementsByClass('RepeatBracket').first().number = 0
+        x = self.getET(s)
+        endings = x.findall('.//ending')
+        self.assertEqual([e.get('number') for e in endings], ['', '', '3', '3'])
+
+    def testTextExpressionOffset(self):
+        '''Transfer element offset after calling getTextExpression().'''
+        # https://github.com/cuthbertLab/music21/issues/624
+        from music21 import converter, repeat, tempo
+
+        s = converter.parse('tinynotation: 4/4 c1')
+        c = repeat.Coda()
+        c.useSymbol = False
+        f = repeat.Fine()
+        mm = tempo.MetronomeMark(text='Langsam')
+        s.measure(1).storeAtEnd([c, f, mm])
+
+        tree = self.getET(s)
+        for direction in tree.findall('.//direction'):
+            self.assertIsNone(direction.find('offset'))
+
+    def testFullMeasureRest(self):
+        from music21 import converter
+        s = converter.parse('tinynotation: 9/8 r1')
+        r = s.flat.notesAndRests.first()
+        r.quarterLength = 4.5
+        self.assertEqual(r.fullMeasure, 'auto')
+        tree = self.getET(s)
+        # Previously, this 4.5QL rest with a duration.type 'complex'
+        # was split on export into 4.0QL and 0.5QL
+        self.assertEqual(len(tree.findall('.//rest')), 1)
+        rest = tree.find('.//rest')
+        self.assertEqual(rest.get('measure'), 'yes')
+
 
 class TestExternal(unittest.TestCase):  # pragma: no cover
-    def runTest(self):
-        pass
 
     def testBasic(self):
         pass
@@ -6134,7 +6486,7 @@ class TestExternal(unittest.TestCase):  # pragma: no cover
         SX = ScoreExporter(b)
         mxScore = SX.parse()
 
-        SX.indent(mxScore)
+        helpers.indent(mxScore)
 
         sio = io.BytesIO()
 
@@ -6167,4 +6519,4 @@ class TestExternal(unittest.TestCase):  # pragma: no cover
 
 if __name__ == '__main__':
     import music21
-    music21.mainTest(Test)  # , runTest='testSpannersWrite')
+    music21.mainTest(Test)  # , runTest='testExceptionMessage')

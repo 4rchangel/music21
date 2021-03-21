@@ -9,17 +9,20 @@
 # Copyright:    Copyright © 2009-2015 Michael Scott Cuthbert and the music21 Project
 # License:      BSD, see license.txt
 # ------------------------------------------------------------------------------
-__all__ = ['defaultlist',
-           'SingletonCounter',
-           'RelativeCounter',
-           'SlottedObjectMixin',
-           'EqualSlottedObjectMixin',
-           'Iterator',
-           'Timer',
-           ]
+__all__ = [
+    'defaultlist',
+    'SingletonCounter',
+    'RelativeCounter',
+    'SlottedObjectMixin',
+    'EqualSlottedObjectMixin',
+    'Iterator',
+    'Timer',
+]
+
 import collections
 import time
 import weakref
+from music21.common.decorators import deprecated
 
 
 class RelativeCounter(collections.Counter):
@@ -37,8 +40,7 @@ class RelativeCounter(collections.Counter):
     b 2
     c 1
 
-    Ties are iterated according to which appeared first in the generated list in Py3.6+
-    and in random order in Py3.4-3.5.
+    Ties are iterated according to which appeared first in the generated list.
 
     >>> rcProportion = rc.asProportion()
     >>> rcProportion['b']
@@ -58,7 +60,6 @@ class RelativeCounter(collections.Counter):
     d 15.0
     b 10.0
     c 5.0
-
     '''
     # pylint:disable=abstract-method
 
@@ -76,6 +77,7 @@ class RelativeCounter(collections.Counter):
         outDict = {}
         for y in self:
             outDict[y] = self[y] / selfLen
+        # noinspection PyTypeChecker
         new = self.__class__(outDict)
         return new
 
@@ -84,6 +86,7 @@ class RelativeCounter(collections.Counter):
         outDict = {}
         for y in self:
             outDict[y] = self[y] * 100 / selfLen
+        # noinspection PyTypeChecker
         new = self.__class__(outDict)
         return new
 
@@ -96,7 +99,6 @@ class defaultlist(list):
     >>> a[5]
     True
     '''
-
     def __init__(self, fx):
         super().__init__()
         self._fx = fx
@@ -133,10 +135,7 @@ class SingletonCounter:
     >>> v2 = sc2()
     >>> v2 > v1
     True
-
-
     '''
-
     def __init__(self):
         pass
 
@@ -200,8 +199,8 @@ class SlottedObjectMixin:
             sValue = getattr(self, slot, None)
             if isinstance(sValue, weakref.ref):
                 sValue = sValue()
-                print("Warning: uncaught weakref found in %r - %s, will not be wrapped again" %
-                      (self, slot))
+                print(f'Warning: uncaught weakref found in {self!r} - {slot}, '
+                      + 'will not be wrapped again')
             state[slot] = sValue
         return state
 
@@ -250,7 +249,6 @@ class EqualSlottedObjectMixin(SlottedObjectMixin):
 
     Ignores differences in .id
     '''
-
     def __eq__(self, other):
         if type(self) is not type(other):
             return False
@@ -269,27 +267,20 @@ class EqualSlottedObjectMixin(SlottedObjectMixin):
 
 
 # ------------------------------------------------------------------------------
-class Iterator(collections.abc.Iterator):
-    '''A simple Iterator object used to handle iteration of Streams and other
+class Iterator(collections.abc.Iterator):  # pragma: no cover
+    '''
+    A simple Iterator object used to handle iteration of Streams and other
     list-like objects.
 
-    >>> i = common.Iterator([2, 3, 4])
-    >>> for x in i:
-    ...     print(x)
-    2
-    3
-    4
-    >>> for y in i:
-    ...     print(y)
-    2
-    3
-    4
+    Deprecated in v7 -- not needed since Python 2.6 became music21 minimum!
     '''
-
+    # TODO: remove in v.8
     def __init__(self, data):
         self.data = data
         self.index = 0
 
+    @deprecated('2021 Jan v7', '2022 Jan',
+                'common.Iterator is deprecated.  use `iter(X)` instead.')
     def __iter__(self):
         self.index = 0
         return self
@@ -310,6 +301,8 @@ class Timer:
 
     >>> t = common.Timer()
     >>> now = t()
+    >>> import time  #_DOCS_HIDE
+    >>> time.sleep(0.01)  #_DOCS_HIDE  -- some systems are extremely fast or have wide deltas
     >>> nowNow = t()
     >>> nowNow > now
     True
@@ -327,7 +320,6 @@ class Timer:
     >>> stopTime < 1
     True
     '''
-
     def __init__(self):
         # start on init
         self._tStart = time.time()

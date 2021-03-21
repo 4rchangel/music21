@@ -19,50 +19,48 @@ __all__ = [
     'cleanpath',
 ]
 
+from typing import List, Union, Optional
 import inspect
 import os
 import pathlib
+import unittest
 
 # ------------------------------------------------------------------------------
 
 
-def getSourceFilePath():
+def getSourceFilePath() -> pathlib.Path:
     '''
     Get the music21 directory that contains source files such as note.py, etc..
     This is not the same as the
     outermost package development directory.
-
-    :rtype: pathlib.Path
     '''
     fpThis = pathlib.Path(inspect.getfile(getSourceFilePath)).resolve()
     fpMusic21 = fpThis.parent.parent  # common is two levels deep
     # use stream as a test case
     if 'stream' not in [x.name for x in fpMusic21.iterdir()]:
-        raise Exception('cannot find expected music21 directory: %s' % fpMusic21)
+        raise Exception(
+            f'cannot find expected music21 directory: {fpMusic21}'
+        )  # pragma: no cover
     return fpMusic21
 
 
-def getMetadataCacheFilePath():
+def getMetadataCacheFilePath() -> pathlib.Path:
     r'''
     Get the stored music21 directory that contains the corpus metadata cache.
 
     >>> fp = common.getMetadataCacheFilePath()
     >>> fp.name == '_metadataCache' and fp.parent.name == 'corpus'
     True
-
-    :rtype: pathlib.Path
     '''
     return getSourceFilePath() / 'corpus' / '_metadataCache'
 
 
-def getCorpusFilePath():
+def getCorpusFilePath() -> pathlib.Path:
     r'''Get the stored music21 directory that contains the corpus metadata cache.
 
     >>> fp = common.getCorpusFilePath()
     >>> fp.name == 'corpus' and fp.parent.name == 'music21'
     True
-
-    :rtype: pathlib.Path
     '''
     from music21 import corpus
     coreCorpus = corpus.corpora.CoreCorpus()
@@ -71,7 +69,7 @@ def getCorpusFilePath():
     return pathlib.Path(coreCorpus.manualCoreCorpusPath)
 
 
-def getCorpusContentDirs():
+def getCorpusContentDirs() -> List[str]:
     '''
     Get all dirs that are found in the CoreCorpus that contain content;
     that is, exclude dirs that have code or other resources.
@@ -97,10 +95,8 @@ def getCorpusContentDirs():
     ...         failed.append(f)
     >>> failed
     []
-
-    :rtype: List[str]
     '''
-    directoryName = str(getCorpusFilePath())  # Py3.6 remove
+    directoryName = getCorpusFilePath()
     result = []
     # dirs to exclude; all files will be retained
     excludedNames = (
@@ -119,29 +115,28 @@ def getCorpusContentDirs():
     return sorted(result)
 
 
-def getRootFilePath():
+def getRootFilePath() -> pathlib.Path:
     '''
     Return the root directory for music21 -- outside of the music21 namespace
     which has directories such as "dist", "documentation", "music21"
 
-    :rtype: pathlib.Path
+    >>> fp = common.getRootFilePath()
+    >>> #_DOCS_SHOW fp
+    PosixPath('/Users/florencePrice/git/music21')
     '''
     fpMusic21 = getSourceFilePath()
     fpParent = fpMusic21.parent
+    # Do not assume will end in music21 -- people can put this anywhere they want
     return fpParent
 
 
-def relativepath(path, start=None):
+def relativepath(path: str, start: Optional[str] = None) -> str:
     '''
     A cross-platform wrapper for `os.path.relpath()`, which returns `path` if
     under Windows, otherwise returns the relative path of `path`.
 
     This avoids problems under Windows when the current working directory is
     on a different drive letter from `path`.
-
-    :type path: str
-    :type start: str
-    :rtype: str
     '''
     import platform
     if platform == 'Windows':
@@ -149,7 +144,7 @@ def relativepath(path, start=None):
     return os.path.relpath(path, start)
 
 
-def cleanpath(path, *, returnPathlib=None):
+def cleanpath(path: Union[str, pathlib.Path], *, returnPathlib=None) -> Union[str, pathlib.Path]:
     '''
     Normalizes the path by expanding ~user on Unix, ${var} environmental vars
     (is this a good idea?), expanding %name% on Windows, normalizing path names (Windows
@@ -177,6 +172,12 @@ def cleanpath(path, *, returnPathlib=None):
         return pathlib.Path(path)
 
 
+class Test(unittest.TestCase):
+    def testGetSourcePath(self):
+        fp = getSourceFilePath()
+        self.assertIsInstance(fp, pathlib.Path)
+
+
 if __name__ == '__main__':
     import music21
-    music21.mainTest()
+    music21.mainTest(Test)

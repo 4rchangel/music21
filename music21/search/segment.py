@@ -18,11 +18,10 @@ Speed notes:
    give you a 3-5x speedup.
 
    If you really want to do lots of comparisons, the `scoreSimilarity` method will
-   use pyLevenshtein if it is installed from http://code.google.com/p/pylevenshtein/ .
-   You will need to compile it by running **sudo python setup.py install** on Mac or
-   Unix (compilation is much more difficult on Windows; sorry). The ratios are very
-   slightly different, but the speedup is between 10 and 100x!
-   (but then PyPy probably won't work)
+   use python-Levenshtein if it is installed, unless forceDifflib is set to True.
+   python-Levenshtein can be installed via **pip install python-Levenshtein**.
+   The ratios are very slightly different, but the speedup is between 10 and 100x!
+   (But then PyPy probably won't work.)
 
 '''
 import copy
@@ -93,7 +92,7 @@ def translateMonophonicPartToSegments(
     outputStr, measures = algorithm(nStream, returnMeasures=True)
     totalLength = len(outputStr)
 
-    numberOfSegments = int(math.ceil((totalLength + 0.0) / (segmentLengths - overlap)))
+    numberOfSegments = int(math.ceil(totalLength / (segmentLengths - overlap)))
     segmentStarts = [i * (segmentLengths - overlap) for i in range(numberOfSegments)]
     # print(totalLength, numberOfSegments, segmentStarts)
 
@@ -156,15 +155,15 @@ def _indexSingleMulticore(filePath, *args, **keywords):
         indexOutput = indexOnePath(filePath, *args, **keywords2)
     except Exception as e:  # pylint: disable=broad-except
         if 'failFast' not in keywords or keywords['failFast'] is False:
-            print("Failed on parse/index for, %s: %s" % (filePath, str(e)))
-            indexOutput = ""
+            print(f'Failed on parse/index for, {filePath}: {e}')
+            indexOutput = ''
         else:
             raise e
     return(shortFp, indexOutput, filePath)
 
 
 def _giveUpdatesMulticore(numRun, totalRun, latestOutput):
-    print("Indexed %s (%d/%d)" % (latestOutput[0], numRun, totalRun))
+    print(f'Indexed {latestOutput[0]} ({numRun}/{totalRun})')
 
 
 # noinspection SpellCheckingInspection
@@ -291,7 +290,7 @@ def getDifflibOrPyLev(
         smObject = difflib.SequenceMatcher(junk, '', seq2)
     else:
         try:
-            import StringMatcher as pyLevenshtein
+            from Levenshtein import StringMatcher as pyLevenshtein
             smObject = pyLevenshtein.StringMatcher(junk, '', seq2)
         except ImportError:
             smObject = difflib.SequenceMatcher(junk, '', seq2)
@@ -386,8 +385,7 @@ def scoreSimilarity(
         thisScore = scoreDict[thisScoreKey]
         scoreIndex += 1
         if giveUpdates is True:
-            print("Comparing {0} ({1}/{2})".format(
-                thisScoreKey, scoreIndex, totalScores))
+            print(f'Comparing {thisScoreKey} ({scoreIndex}/{totalScores})')
         for pNum in range(len(thisScore)):
             for segmentNumber, thisSegmentOuter in enumerate(thisScore[pNum]['segmentList']):
                 if len(thisSegmentOuter) < minimumLength:
